@@ -70,3 +70,27 @@ variable "github_environment" {
     error_message = "github_environment may contain only letters, numbers, dots, underscores, and hyphens."
   }
 }
+
+variable "github_repository_owner_id" {
+  type        = string
+  default     = null
+  nullable    = true
+  description = "Immutable numeric GitHub owner ID used in the repository OIDC subject."
+
+  validation {
+    condition     = var.github_repository_owner_id == null || can(regex("^[0-9]+$", var.github_repository_owner_id))
+    error_message = "github_repository_owner_id must be null or the exact numeric GitHub owner ID."
+  }
+}
+
+variable "github_repository_id" {
+  type        = string
+  default     = null
+  nullable    = true
+  description = "Immutable numeric GitHub repository ID used in the repository OIDC subject."
+
+  validation {
+    condition     = var.github_repository_id == null || can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "github_repository_id must be null or the exact numeric GitHub repository ID."
+  }
+}

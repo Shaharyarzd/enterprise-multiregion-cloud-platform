@@ -2,6 +2,7 @@
 
 verify:
 	python3 scripts/verify.py
+	python3 scripts/check-public-repo-identifiers.py
 
 test:
 	python3 -m unittest discover -s apps/careflow-api/tests -p 'test_*.py'

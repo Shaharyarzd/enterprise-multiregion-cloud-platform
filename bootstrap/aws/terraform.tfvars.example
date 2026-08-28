@@ -10,4 +10,5 @@ project_name       = "careflow-portfolio"
 # Example format only: "actual-owner/actual-repository"
 github_repository = null
 github_environment = "portfolio-publish"
-
+github_repository_owner_id = null
+github_repository_id       = null

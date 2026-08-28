@@ -5,10 +5,19 @@ locals {
   primary_state_key    = "careflow/primary/terraform.tfstate"
   ecr_repository_name  = "${var.project_name}/careflow-api"
 
-  deployment_role_arn = "arn:aws:iam::${var.account_id}:role/${local.deployment_role_name}"
-  platform_admin_arn  = "arn:aws:iam::${var.account_id}:role/${local.platform_admin_name}"
-  bootstrap_user_arn  = "arn:aws:iam::${var.account_id}:user/${var.bootstrap_user_name}"
-  state_bucket_arn    = "arn:aws:s3:::${var.state_bucket_name}"
+  deployment_role_arn     = "arn:aws:iam::${var.account_id}:role/${local.deployment_role_name}"
+  platform_admin_arn      = "arn:aws:iam::${var.account_id}:role/${local.platform_admin_name}"
+  bootstrap_user_arn      = "arn:aws:iam::${var.account_id}:user/${var.bootstrap_user_name}"
+  state_bucket_arn        = "arn:aws:s3:::${var.state_bucket_name}"
+  github_repository_parts = split("/", coalesce(var.github_repository, "disabled/disabled"))
+  github_oidc_subject = var.github_repository == null ? null : format(
+    "repo:%s@%s/%s@%s:environment:%s",
+    local.github_repository_parts[0],
+    var.github_repository_owner_id,
+    local.github_repository_parts[1],
+    var.github_repository_id,
+    var.github_environment,
+  )
 
   common_tags = {
     Project     = var.project_name
@@ -286,7 +295,7 @@ data "aws_iam_policy_document" "github_publish_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repository}:environment:${var.github_environment}"]
+      values   = [local.github_oidc_subject]
     }
   }
 }
@@ -299,6 +308,16 @@ resource "aws_iam_role" "github_publish" {
   assume_role_policy   = data.aws_iam_policy_document.github_publish_trust[0].json
   max_session_duration = 3600
   tags                 = local.common_tags
+
+  lifecycle {
+    precondition {
+      condition = (
+        var.github_repository_owner_id != null &&
+        var.github_repository_id != null
+      )
+      error_message = "GitHub OIDC trust requires the exact immutable repository owner ID and repository ID."
+    }
+  }
 }
 
 data "aws_iam_policy_document" "github_publish" {

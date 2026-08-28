@@ -10,7 +10,7 @@ resources:
 
 images:
   - name: careflow-api
-    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/careflow-api
+    newName: careflow-api
     digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
 
 patches:

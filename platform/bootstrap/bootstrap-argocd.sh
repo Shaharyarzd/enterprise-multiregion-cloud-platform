@@ -5,9 +5,14 @@ command -v helm >/dev/null || { echo "helm is required"; exit 1; }
 command -v kubectl >/dev/null || { echo "kubectl is required"; exit 1; }
 command -v rg >/dev/null || { echo "ripgrep (rg) is required"; exit 1; }
 
-ROOT_APPLICATION="$(dirname "$0")/root-application.yaml"
-if rg -q 'REPLACE_ME' "$ROOT_APPLICATION"; then
-  echo "Replace the repository owner in root-application.yaml before bootstrapping."
+repo_root="$(cd "$(dirname "$0")/../.." && pwd)"
+ROOT_APPLICATION="${RUNTIME_ROOT_APPLICATION:-$repo_root/.runtime/cloud-manifests/root-application.yaml}"
+if [[ ! -f "$ROOT_APPLICATION" ]]; then
+  echo "Generate the ignored runtime root Application with scripts/configure-cloud-manifests.py first."
+  exit 1
+fi
+if rg -q 'REPLACE_ME|000000000000' "$ROOT_APPLICATION"; then
+  echo "Runtime root Application contains an unresolved placeholder."
   exit 1
 fi
 

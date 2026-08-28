@@ -8,7 +8,7 @@ This independent Terraform root prepares only the prerequisites needed by the pr
 - the IAM user's narrowly scoped caller policy;
 - optionally, the account GitHub OIDC provider and `careflow-github-ecr-publisher` role.
 
-`github_repository` deliberately defaults to `null`. The OIDC resources are omitted until the owner supplies the exact real `owner/repository`; no repository name is inferred.
+`github_repository` deliberately defaults to `null`. The OIDC resources are omitted until the owner supplies the exact real `owner/repository`, immutable owner ID, and immutable repository ID. Trust uses GitHub's exact immutable repository/environment subject and `aud=sts.amazonaws.com`; no repository identity is inferred and no wildcard subject is accepted.
 
 Bootstrap uses local Terraform state because the S3 backend does not exist before the first bootstrap apply. The ignored `terraform.tfstate` must be retained on an encrypted device. The long-lived platform state uses the S3 backend instead. Do not destroy this bootstrap root while the workload or remote state still exists; the bucket also has `prevent_destroy`.
 

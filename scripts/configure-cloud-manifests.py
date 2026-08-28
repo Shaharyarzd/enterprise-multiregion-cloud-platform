@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
-"""Replace non-secret cloud placeholders after Terraform apply."""
+"""Generate an ignored Argo root Application with runtime-only AWS identifiers."""
 
 import argparse
+import json
 from pathlib import Path
 import re
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_OUTPUT = ROOT / ".runtime" / "cloud-manifests" / "root-application.yaml"
 
 
 def checked(pattern, value, label):
@@ -14,23 +16,8 @@ def checked(pattern, value, label):
     return value
 
 
-def replace_in(relative_path, replacements):
-    path = ROOT / relative_path
-    text = path.read_text()
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-    path.write_text(text)
-
-
-def enable_tls_patch():
-    path = ROOT / "k8s/overlays/production/kustomization.yaml"
-    text = path.read_text()
-    marker = "patches:\n  - target:"
-    if "  - path: ingress-tls-patch.yaml\n" not in text:
-        if marker not in text:
-            raise ValueError("production kustomization patches marker is missing")
-        text = text.replace(marker, "patches:\n  - path: ingress-tls-patch.yaml\n  - target:")
-        path.write_text(text)
+def quoted(value):
+    return json.dumps(value)
 
 
 def main():
@@ -45,56 +32,165 @@ def main():
     parser.add_argument("--load-balancer-role-arn", required=True)
     parser.add_argument("--ecr-repository", required=True)
     parser.add_argument("--acm-certificate-arn")
+    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
 
-    repository = checked(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", args.github_repository, "GitHub repository")
+    repository = checked(
+        r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",
+        args.github_repository,
+        "GitHub repository",
+    )
     region = checked(r"[a-z]{2}(?:-gov)?-[a-z]+-\d", args.region, "AWS region")
-    checked(r"vpc-[0-9a-f]+", args.vpc_id, "VPC ID")
-    checked(r"sg-[0-9a-f]+", args.workload_security_group, "security group")
-    checked(r"arn:[^:]+:iam::[0-9]{12}:role/.+", args.careflow_role_arn, "CareFlow role ARN")
-    checked(r"arn:[^:]+:iam::[0-9]{12}:role/.+", args.load_balancer_role_arn, "load balancer role ARN")
-    checked(r"arn:[^:]+:secretsmanager:[^:]+:[0-9]{12}:secret:.+", args.secret_arn, "secret ARN")
+    cluster_name = checked(r"[A-Za-z0-9][A-Za-z0-9_-]+", args.cluster_name, "cluster name")
+    vpc_id = checked(r"vpc-[0-9a-f]+", args.vpc_id, "VPC ID")
+    workload_security_group = checked(
+        r"sg-[0-9a-f]+", args.workload_security_group, "security group"
+    )
+    careflow_role_arn = checked(
+        r"arn:[^:]+:iam::[0-9]{12}:role/.+", args.careflow_role_arn, "CareFlow role ARN"
+    )
+    load_balancer_role_arn = checked(
+        r"arn:[^:]+:iam::[0-9]{12}:role/.+",
+        args.load_balancer_role_arn,
+        "load balancer role ARN",
+    )
+    secret_arn = checked(
+        r"arn:[^:]+:secretsmanager:[^:]+:[0-9]{12}:secret:.+",
+        args.secret_arn,
+        "secret ARN",
+    )
+    ecr_repository = checked(
+        r"[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/[a-z0-9/_-]+",
+        args.ecr_repository,
+        "ECR repository",
+    )
     if args.acm_certificate_arn:
-        checked(r"arn:[^:]+:acm:[^:]+:[0-9]{12}:certificate/.+", args.acm_certificate_arn, "ACM certificate ARN")
-    checked(r"[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/[a-z0-9/_-]+", args.ecr_repository, "ECR repository")
+        certificate_arn = checked(
+            r"arn:[^:]+:acm:[^:]+:[0-9]{12}:certificate/.+",
+            args.acm_certificate_arn,
+            "ACM certificate ARN",
+        )
+    else:
+        certificate_arn = None
 
     repo_url = "https://github.com/%s.git" % repository
-    for path in [
-        "platform/bootstrap/root-application.yaml",
-        "platform/argocd/project.yaml",
-        "platform/argocd/careflow-application.yaml",
-        "platform/argocd/observability-application.yaml",
-        "platform/argocd/kyverno-policies-application.yaml",
-    ]:
-        replace_in(path, {
-            "https://github.com/REPLACE_ME/enterprise-multiregion-cloud-platform.git": repo_url
-        })
+    tls_patch = ""
+    if certificate_arn:
+        tls_patch = f"""
+                  - target:
+                      kind: Ingress
+                      name: careflow-api
+                    patch: |-
+                      - op: add
+                        path: /metadata/annotations/alb.ingress.kubernetes.io~1listen-ports
+                        value: '[{{\"HTTP\":80}},{{\"HTTPS\":443}}]'
+                      - op: add
+                        path: /metadata/annotations/alb.ingress.kubernetes.io~1ssl-redirect
+                        value: \"443\"
+                      - op: add
+                        path: /metadata/annotations/alb.ingress.kubernetes.io~1certificate-arn
+                        value: {quoted(certificate_arn)}
+                      - op: add
+                        path: /metadata/annotations/alb.ingress.kubernetes.io~1ssl-policy
+                        value: ELBSecurityPolicy-TLS13-1-2-2021-06"""
 
-    replace_in("platform/argocd/load-balancer-controller-application.yaml", {
-        "REPLACE_ME_EKS_CLUSTER_NAME": args.cluster_name,
-        "REPLACE_ME_VPC_ID": args.vpc_id,
-        "arn:aws:iam::000000000000:role/REPLACE_ME-aws-load-balancer-controller": args.load_balancer_role_arn,
-    })
-    replace_in("k8s/overlays/production/external-secret.yaml", {
-        "region: us-east-1": "region: %s" % region,
-        "REPLACE_ME_RDS_MANAGED_SECRET_ARN": args.secret_arn,
-    })
-    replace_in("k8s/overlays/production/security-group-policy.yaml", {
-        "sg-REPLACE_ME_CAREFLOW_WORKLOAD": args.workload_security_group,
-    })
-    replace_in("k8s/overlays/production/kustomization.yaml", {
-        "000000000000.dkr.ecr.us-east-1.amazonaws.com/careflow-api": args.ecr_repository,
-        "arn:aws:iam::000000000000:role/REPLACE_ME-careflow-secrets": args.careflow_role_arn,
-    })
-    if args.acm_certificate_arn:
-        replace_in("k8s/overlays/production/ingress-tls-patch.yaml", {
-            "REPLACE_ME_ACM_CERTIFICATE_ARN": args.acm_certificate_arn,
-        })
-        enable_tls_patch()
-        tls_status = "trusted TLS patch enabled"
-    else:
-        tls_status = "HTTP ALB proof enabled; trusted TLS remains PENDING"
-    print("Configured non-secret cloud manifest values (%s). Review the diff before committing." % tls_status)
+    template = (ROOT / "platform" / "bootstrap" / "root-application.yaml").read_text()
+    template = template.replace(
+        "https://github.com/REPLACE_ME/enterprise-multiregion-cloud-platform.git",
+        repo_url,
+    )
+    marker = "    path: platform/argocd\n"
+    if marker not in template:
+        raise ValueError("root Application source marker is missing")
+
+    runtime_patches = f"""    kustomize:
+      patches:
+        - target:
+            kind: AppProject
+            name: careflow-platform
+          patch: |-
+            - op: replace
+              path: /spec/sourceRepos/0
+              value: {quoted(repo_url)}
+        - target:
+            kind: Application
+            name: careflow-kyverno-policies
+          patch: |-
+            - op: replace
+              path: /spec/source/repoURL
+              value: {quoted(repo_url)}
+        - target:
+            kind: Application
+            name: careflow-observability
+          patch: |-
+            - op: replace
+              path: /spec/sources/1/repoURL
+              value: {quoted(repo_url)}
+        - target:
+            kind: Application
+            name: aws-load-balancer-controller
+          patch: |-
+            - op: replace
+              path: /spec/source/helm/valuesObject/clusterName
+              value: {quoted(cluster_name)}
+            - op: replace
+              path: /spec/source/helm/valuesObject/region
+              value: {quoted(region)}
+            - op: replace
+              path: /spec/source/helm/valuesObject/vpcId
+              value: {quoted(vpc_id)}
+            - op: replace
+              path: /spec/source/helm/valuesObject/serviceAccount/annotations/eks.amazonaws.com~1role-arn
+              value: {quoted(load_balancer_role_arn)}
+        - target:
+            kind: Application
+            name: careflow-api
+          patch: |-
+            - op: replace
+              path: /spec/source/repoURL
+              value: {quoted(repo_url)}
+            - op: add
+              path: /spec/source/kustomize
+              value:
+                images:
+                  - careflow-api={ecr_repository}
+                patches:
+                  - target:
+                      kind: ExternalSecret
+                      name: careflow-database
+                    patch: |-
+                      - op: replace
+                        path: /spec/dataFrom/0/extract/key
+                        value: {quoted(secret_arn)}
+                  - target:
+                      kind: SecurityGroupPolicy
+                      name: careflow-api
+                    patch: |-
+                      - op: replace
+                        path: /spec/securityGroups/groupIds/0
+                        value: {quoted(workload_security_group)}
+                  - target:
+                      kind: ServiceAccount
+                      name: careflow-api
+                    patch: |-
+                      - op: add
+                        path: /metadata/annotations
+                        value:
+                          eks.amazonaws.com/role-arn: {quoted(careflow_role_arn)}{tls_patch}
+"""
+    rendered = template.replace(marker, marker + runtime_patches)
+    if "REPLACE_ME" in rendered or "000000000000" in rendered:
+        raise ValueError("runtime root Application still contains an unresolved placeholder")
+
+    output = args.output.resolve()
+    runtime_root = (ROOT / ".runtime").resolve()
+    if runtime_root not in output.parents:
+        raise ValueError("runtime output must remain under the ignored .runtime directory")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(rendered)
+    output.chmod(0o600)
+    tls_status = "trusted TLS runtime patch enabled" if certificate_arn else "HTTP proof; trusted TLS PENDING"
+    print("Generated ignored runtime Argo configuration (%s): %s" % (tls_status, output))
 
 
 if __name__ == "__main__":

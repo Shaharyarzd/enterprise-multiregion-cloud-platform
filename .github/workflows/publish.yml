@@ -69,13 +69,11 @@ jobs:
       - name: Create GitOps promotion pull request
         env:
           GH_TOKEN: ${{ github.token }}
-          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY_URL }}
           IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
         run: |
           set -euo pipefail
           branch="gitops/careflow-${GITHUB_SHA:0:12}"
           python3 scripts/update-image-digest.py \
-            --repository "$ECR_REPOSITORY" \
             --digest "$IMAGE_DIGEST"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

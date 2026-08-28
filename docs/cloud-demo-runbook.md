@@ -141,7 +141,7 @@ Expected: the context names the sandbox cluster and two nodes become `Ready`. St
 
 If you control a domain, request and DNS-validate an ACM certificate in the same region. Otherwise omit `ACM_CERTIFICATE_ARN`: the default manifest creates an HTTP listener so ALB routing can still be proved, while trusted public TLS remains explicitly **PENDING**. Do not buy a domain for this exercise and do not claim `curl -k` as certificate validation.
 
-Set the real values, then configure only non-secret manifest references:
+Generate the cluster-specific Argo root Application under ignored `.runtime/`. This injects AWS identifiers during Argo rendering; it never edits the public templates:
 
 ```bash
 export GITHUB_REPOSITORY='OWNER/enterprise-multiregion-cloud-platform'
@@ -155,12 +155,14 @@ python3 scripts/configure-cloud-manifests.py \
   --careflow-role-arn "$(terraform -chdir=infra/environments/primary output -raw careflow_secrets_role_arn)" \
   --load-balancer-role-arn "$(terraform -chdir=infra/environments/primary output -raw load_balancer_controller_role_arn)" \
   --ecr-repository "$(terraform -chdir=infra/environments/primary output -raw ecr_repository_url)"
-rg -n 'REPLACE_ME|000000000000|sha256:000000000000' platform k8s/overlays/production
+git diff --exit-code -- platform k8s/overlays/production
+git check-ignore .runtime/cloud-manifests/root-application.yaml
+python3 scripts/check-public-repo-identifiers.py
 ```
 
-If a validated certificate is available, export its ARN and repeat the configuration command with `--acm-certificate-arn "$ACM_CERTIFICATE_ARN"`; this enables `ingress-tls-patch.yaml`. Without it, the remaining certificate placeholder is expected only in that disabled optional patch. All other placeholders must be resolved before bootstrap.
+If a validated certificate is available, export its ARN and repeat the configuration command with `--acm-certificate-arn "$ACM_CERTIFICATE_ARN"`; the ignored runtime root adds the trusted-TLS annotations. Without it, HTTP proof remains enabled and trusted TLS remains PENDING. Never stage `.runtime/` or replace tracked placeholders with live AWS identifiers.
 
-Configure the GitHub environment `portfolio-publish` with `AWS_REGION`, `AWS_PUBLISH_ROLE_ARN`, and `ECR_REPOSITORY_URL` as variables, enable required approval, then manually run **Publish CareFlow Image**. It must test and scan the built image, assume AWS via OIDC, push to ECR, and open a digest-promotion PR. Review and merge the PR; never use long-lived AWS keys or a mutable image tag.
+Configure the GitHub environment `portfolio-publish` with `AWS_REGION`, `AWS_PUBLISH_ROLE_ARN`, and `ECR_REPOSITORY_URL` as variables, enable required approval, then manually run **Publish CareFlow Image**. It must test and scan the built image, assume AWS via OIDC, push to ECR, and open a digest-only promotion PR. The private ECR URL is injected by the ignored runtime root, not committed. Review and merge the PR; never use long-lived AWS keys or a mutable image tag.
 
 Bootstrap GitOps and inspect conditions without printing secrets:
 

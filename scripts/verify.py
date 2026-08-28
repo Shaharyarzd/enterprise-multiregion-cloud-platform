@@ -86,6 +86,25 @@ for required in ["id-token: write", "docker push", "update-image-digest.py"]:
         errors.append(f"Publication workflow is missing required control: {required}")
 if re.search(r"\b(kubectl|helm)\b", publication_workflow):
     errors.append("Publication workflow must not mutate Kubernetes directly")
+digest_updater = (ROOT / "scripts" / "update-image-digest.py").read_text()
+if "newName" in digest_updater or 'parser.add_argument("--repository"' in digest_updater:
+    errors.append("Digest promotion must not commit the private ECR repository URL")
+if "newName: careflow-api" not in production_kustomization:
+    errors.append("Public production overlay must retain a generic image repository name")
+
+bootstrap_main = (ROOT / "bootstrap" / "aws" / "main.tf").read_text()
+for required in [
+    "github_repository_owner_id",
+    "github_repository_id",
+    '"repo:%s@%s/%s@%s:environment:%s"',
+    'values   = ["sts.amazonaws.com"]',
+]:
+    if required not in bootstrap_main:
+        errors.append(f"GitHub OIDC trust lacks immutable exact-subject control: {required}")
+
+security_workflow = (ROOT / ".github" / "workflows" / "security.yml").read_text()
+if "check-public-repo-identifiers.py" not in security_workflow:
+    errors.append("CI does not enforce the public runtime-identifier guard")
 
 primary_main = (ROOT / "infra" / "environments" / "primary" / "main.tf").read_text()
 primary_variables = (ROOT / "infra" / "environments" / "primary" / "variables.tf").read_text()
@@ -137,9 +156,16 @@ for required in ["region: us-east-1", "vpcId: REPLACE_ME_VPC_ID"]:
     if required not in alb_application:
         errors.append(f"ALB Controller lacks explicit hardened-IMDS dependency: {required}")
 cloud_configurator = (ROOT / "scripts" / "configure-cloud-manifests.py").read_text()
-for required in ['parser.add_argument("--vpc-id", required=True)', '"REPLACE_ME_VPC_ID": args.vpc_id']:
+for required in [
+    'parser.add_argument("--vpc-id", required=True)',
+    'ROOT / ".runtime" / "cloud-manifests"',
+    "runtime root Application still contains an unresolved placeholder",
+    "/spec/source/helm/valuesObject/vpcId",
+    "/spec/dataFrom/0/extract/key",
+    "/spec/securityGroups/groupIds/0",
+]:
     if required not in cloud_configurator:
-        errors.append(f"ALB Controller VPC injection path is incomplete: {required}")
+        errors.append(f"Ignored runtime injection path is incomplete: {required}")
 
 expected_waves = {
     "external-secrets-application.yaml": "-50",
