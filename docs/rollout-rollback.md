@@ -24,8 +24,8 @@ If v1 is unavailable, stop: the result does not prove safe rollout behavior. If 
 
 ## Cloud/GitOps variation
 
-Pause automated sync only for the bounded drill, apply an equivalent reviewed failure commit through Git, observe Argo report degraded health, then revert that Git commit. Argo must reconcile the revert. Do not use CI or an operator shell to make an undocumented permanent production change.
+Record the last-known-good digest from `main`, merge the equivalent reviewed failure commit through Git, and observe Argo report degraded health. Create and merge a Git revert of that exact failure commit; do not use `kubectl rollout undo` for cloud rollback. Argo must reconcile the reverted `main` commit.
 
 ## Recovery procedure
 
-For the local imperative drill, the script performs `kubectl rollout undo`. For production GitOps, revert the promotion commit or merge a PR that restores the last known-good digest. Confirm Deployment availability, Argo `Synced/Healthy`, ALB target health, `/readyz`, and the appointment smoke test.
+For the local imperative drill, the script performs `kubectl rollout undo`. For production GitOps, revert the promotion commit or merge a PR that restores the recorded last-known-good digest. Success requires all five signals: the running pod `imageID` contains that exact previous digest; Argo reports `Synced` and `Healthy`; every CareFlow pod is Ready; ALB targets are healthy; and continuous traffic plus `/readyz` and the appointment smoke test recover. A Kubernetes-only rollback does not satisfy the cloud proof.

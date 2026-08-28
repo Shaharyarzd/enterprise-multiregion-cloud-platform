@@ -84,6 +84,8 @@ publication_workflow = (ROOT / ".github" / "workflows" / "publish.yml").read_tex
 for required in ["id-token: write", "docker push", "update-image-digest.py"]:
     if required not in publication_workflow:
         errors.append(f"Publication workflow is missing required control: {required}")
+if 'gh pr merge "$pr_url" --squash --delete-branch' not in publication_workflow:
+    errors.append("Publication workflow must deterministically merge its digest-only PR into main")
 if re.search(r"\b(kubectl|helm)\b", publication_workflow):
     errors.append("Publication workflow must not mutate Kubernetes directly")
 digest_updater = (ROOT / "scripts" / "update-image-digest.py").read_text()
@@ -162,6 +164,9 @@ for required in [
     "runtime root Application still contains an unresolved placeholder",
     "/spec/source/helm/valuesObject/vpcId",
     "/spec/dataFrom/0/extract/key",
+    "/spec/target/template/data/database.json",
+    '"username":{{ .username | toJson }}',
+    '"password":{{ .password | toJson }}',
     "/spec/securityGroups/groupIds/0",
 ]:
     if required not in cloud_configurator:

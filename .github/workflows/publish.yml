@@ -81,8 +81,9 @@ jobs:
           git add k8s/overlays/production/kustomization.yaml
           git commit -m "chore(gitops): promote CareFlow ${GITHUB_SHA:0:12}"
           git push origin "$branch"
-          gh pr create \
+          pr_url="$(gh pr create \
             --base main \
             --head "$branch" \
             --title "Promote CareFlow ${GITHUB_SHA:0:12}" \
-            --body "Promotes the tested ECR artifact by immutable digest: \`${IMAGE_DIGEST}\`. Argo CD will reconcile only after this PR is reviewed and merged."
+            --body "Promotes the tested ECR artifact by immutable digest: \`${IMAGE_DIGEST}\`. This workflow merges the digest-only PR; Argo CD then reconciles main.")"
+          gh pr merge "$pr_url" --squash --delete-branch

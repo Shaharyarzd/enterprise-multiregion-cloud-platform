@@ -151,6 +151,7 @@ python3 scripts/configure-cloud-manifests.py \
   --cluster-name "$CLUSTER_NAME" \
   --vpc-id "$(terraform -chdir=infra/environments/primary output -raw vpc_id)" \
   --secret-arn "$(terraform -chdir=infra/environments/primary output -raw database_master_secret_arn)" \
+  --database-host "$(terraform -chdir=infra/environments/primary output -raw database_endpoint)" \
   --workload-security-group "$(terraform -chdir=infra/environments/primary output -raw careflow_workload_security_group_id)" \
   --careflow-role-arn "$(terraform -chdir=infra/environments/primary output -raw careflow_secrets_role_arn)" \
   --load-balancer-role-arn "$(terraform -chdir=infra/environments/primary output -raw load_balancer_controller_role_arn)" \

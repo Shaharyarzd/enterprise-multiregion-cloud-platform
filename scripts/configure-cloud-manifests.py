@@ -27,6 +27,9 @@ def main():
     parser.add_argument("--cluster-name", required=True)
     parser.add_argument("--vpc-id", required=True)
     parser.add_argument("--secret-arn", required=True)
+    parser.add_argument("--database-host", required=True)
+    parser.add_argument("--database-port", default="5432")
+    parser.add_argument("--database-name", default="careflow")
     parser.add_argument("--workload-security-group", required=True)
     parser.add_argument("--careflow-role-arn", required=True)
     parser.add_argument("--load-balancer-role-arn", required=True)
@@ -59,6 +62,19 @@ def main():
         args.secret_arn,
         "secret ARN",
     )
+    database_host = checked(
+        r"[A-Za-z0-9][A-Za-z0-9.-]+",
+        args.database_host,
+        "database host",
+    )
+    database_port = int(checked(r"[0-9]+", args.database_port, "database port"))
+    if not 1 <= database_port <= 65535:
+        raise ValueError("database port must be between 1 and 65535")
+    database_name = checked(
+        r"[A-Za-z_][A-Za-z0-9_-]*",
+        args.database_name,
+        "database name",
+    )
     ecr_repository = checked(
         r"[0-9]{12}\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com/[a-z0-9/_-]+",
         args.ecr_repository,
@@ -74,6 +90,12 @@ def main():
         certificate_arn = None
 
     repo_url = "https://github.com/%s.git" % repository
+    database_json_template = (
+        f'{{"host":{quoted(database_host)},"port":{database_port},'
+        f'"dbname":{quoted(database_name)},'
+        '"username":{{ .username | toJson }},'
+        '"password":{{ .password | toJson }}}}'
+    )
     tls_patch = ""
     if certificate_arn:
         tls_patch = f"""
@@ -162,6 +184,9 @@ def main():
                       - op: replace
                         path: /spec/dataFrom/0/extract/key
                         value: {quoted(secret_arn)}
+                      - op: replace
+                        path: /spec/target/template/data/database.json
+                        value: {quoted(database_json_template)}
                   - target:
                       kind: SecurityGroupPolicy
                       name: careflow-api
