@@ -156,7 +156,12 @@ for filename, wave in expected_waves.items():
         errors.append(f"Argo dependency order is incorrect for {filename}; expected wave {wave}")
 
 argocd_bootstrap = (ROOT / "platform" / "bootstrap" / "bootstrap-argocd.sh").read_text()
-for required in ["--for=condition=Ready nodes --all", "vpc\\.amazonaws\\.com/has-trunk-attached"]:
+for required in [
+    "--for=condition=Ready nodes --all",
+    "cninodes.vpcresources.k8s.aws",
+    "SecurityGroupsForPods",
+    "vpc\\.amazonaws\\.com/has-trunk-attached",
+]:
     if required not in argocd_bootstrap:
         errors.append(f"Argo bootstrap lacks EKS networking readiness gate: {required}")
 

@@ -14,9 +14,17 @@ fi
 echo "Waiting for every EKS worker to be Ready before controller bootstrap."
 kubectl wait --for=condition=Ready nodes --all --timeout=10m
 echo "Waiting for EKS VPC resource controller trunk-ENI readiness."
-kubectl wait \
-  --for=jsonpath='{.metadata.labels.vpc\.amazonaws\.com/has-trunk-attached}'=true \
-  nodes --all --timeout=10m
+if kubectl get crd cninodes.vpcresources.k8s.aws >/dev/null 2>&1; then
+  # VPC CNI 1.15+ publishes security-groups-for-pods readiness through CNINode.
+  kubectl wait \
+    --for=jsonpath='{.spec.features[?(@.name=="SecurityGroupsForPods")].name}'=SecurityGroupsForPods \
+    cninode --all --timeout=10m
+else
+  # Compatibility fallback for VPC CNI releases older than 1.15.
+  kubectl wait \
+    --for=jsonpath='{.metadata.labels.vpc\.amazonaws\.com/has-trunk-attached}'=true \
+    nodes --all --timeout=10m
+fi
 
 helm repo add argo https://argoproj.github.io/argo-helm
 helm repo update argo
