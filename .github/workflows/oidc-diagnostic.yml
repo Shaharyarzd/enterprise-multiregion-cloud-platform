@@ -1,0 +1,49 @@
+name: Verify GitHub OIDC to AWS STS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: portfolio-publish
+    steps:
+      - name: Report allow-listed OIDC claims
+        run: |
+          python3 - <<'PY'
+          import base64
+          import json
+          import os
+          import urllib.request
+
+          request = urllib.request.Request(
+              os.environ["ACTIONS_ID_TOKEN_REQUEST_URL"] + "&audience=sts.amazonaws.com",
+              headers={"Authorization": "Bearer " + os.environ["ACTIONS_ID_TOKEN_REQUEST_TOKEN"]},
+          )
+          with urllib.request.urlopen(request, timeout=15) as response:
+              token = json.load(response)["value"]
+          payload = token.split(".")[1]
+          payload += "=" * (-len(payload) % 4)
+          claims = json.loads(base64.urlsafe_b64decode(payload))
+          allow_list = [
+              "sub", "aud", "repository", "repository_id",
+              "repository_owner", "repository_owner_id",
+              "environment", "ref", "workflow_ref",
+          ]
+          print(json.dumps({key: claims.get(key) for key in allow_list}, sort_keys=True))
+          if claims.get("aud") != "sts.amazonaws.com":
+              raise SystemExit("unexpected OIDC audience")
+          PY
+      - name: Assume the scoped publisher role
+        uses: aws-actions/configure-aws-credentials@99214aa6889fcddfa57764031d71add364327e59 # v6.1.3
+        with:
+          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: careflow-oidc-${{ github.run_id }}
+      - name: Prove AWS identity
+        run: aws sts get-caller-identity --query '{Account:Account,Arn:Arn}' --output json
