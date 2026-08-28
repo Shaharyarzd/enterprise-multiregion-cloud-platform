@@ -11,7 +11,7 @@ resources:
 images:
   - name: careflow-api
     newName: careflow-api
-    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    digest: sha256:366f940164aef29a44cce77fb0ecbd647e173718e3902a5e321fc445ff916e19
 
 patches:
   - target:
