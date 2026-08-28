@@ -21,12 +21,6 @@ patches:
       - op: replace
         path: /data/ENVIRONMENT
         value: production
-      - op: replace
-        path: /data/APP_VERSION
-        value: 0.2.0-readiness-failure
-      - op: add
-        path: /data/FORCE_READINESS_FAILURE
-        value: "true"
   - target:
       kind: Namespace
       name: careflow
