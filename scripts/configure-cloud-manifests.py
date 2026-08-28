@@ -80,6 +80,16 @@ def main():
         args.ecr_repository,
         "ECR repository",
     )
+    production_kustomization = (
+        ROOT / "k8s" / "overlays" / "production" / "kustomization.yaml"
+    ).read_text()
+    digest_match = re.search(
+        r"(?m)^\s*digest:\s+(sha256:[0-9a-f]{64})$",
+        production_kustomization,
+    )
+    if not digest_match:
+        raise ValueError("production image digest is missing or invalid")
+    immutable_image = f"{ecr_repository}@{digest_match.group(1)}"
     if args.acm_certificate_arn:
         certificate_arn = checked(
             r"arn:[^:]+:acm:[^:]+:[0-9]{12}:certificate/.+",
@@ -94,7 +104,7 @@ def main():
         f'{{"host":{quoted(database_host)},"port":{database_port},'
         f'"dbname":{quoted(database_name)},'
         '"username":{{ .username | toJson }},'
-        '"password":{{ .password | toJson }}}}'
+        '"password":{{ .password | toJson }}}'
     )
     tls_patch = ""
     if certificate_arn:
@@ -175,7 +185,7 @@ def main():
               path: /spec/source/kustomize
               value:
                 images:
-                  - careflow-api={ecr_repository}
+                  - careflow-api={immutable_image}
                 patches:
                   - target:
                       kind: ExternalSecret

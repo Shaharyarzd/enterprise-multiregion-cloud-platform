@@ -24,15 +24,26 @@ configs:
     server.insecure: true
   cm:
     admin.enabled: "true"
+    resource.customizations.health.argoproj.io_Application: |
+      health_status = {}
+      health_status.status = "Progressing"
+      health_status.message = "Waiting for child Application reconciliation"
+      if obj.status ~= nil and obj.status.health ~= nil then
+        health_status.status = obj.status.health.status
+        if obj.status.health.message ~= nil then
+          health_status.message = obj.status.health.message
+        end
+      end
+      return health_status
 
 controller:
   replicas: 1
   resources:
     requests:
       cpu: 100m
-      memory: 256Mi
-    limits:
       memory: 512Mi
+    limits:
+      memory: 1Gi
 
 repoServer:
   replicas: 1
