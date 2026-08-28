@@ -1,0 +1,52 @@
+name: Security Guardrails
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  policy-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Reject accidental secret-like files
+        run: |
+          set -euo pipefail
+          if find . -path ./.git -prune -o -type f \( -name '*.pem' -o -name '*.p12' -o -name '*.key' \) -print | grep -q .; then
+            echo "Private key/certificate-like file detected"
+            exit 1
+          fi
+      - name: Verify portfolio invariants
+        run: python3 scripts/verify.py
+      - name: Scan repository configuration, dependencies, and secrets
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
+          exit-code: '1'
+
+  container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build review image
+        run: docker build --tag careflow-api:ci apps/careflow-api
+      - name: Scan built image
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: careflow-api:ci
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
+          exit-code: '1'

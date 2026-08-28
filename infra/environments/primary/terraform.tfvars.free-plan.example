@@ -1,0 +1,29 @@
+# FREE-PLAN DEMO PROFILE. This is a constrained execution environment, not a production profile.
+# Terraform remains a no-op until an owner explicitly enables a reviewed plan.
+enable_cloud_resources = false
+deployment_profile     = "free-plan-demo"
+
+aws_region                   = "us-east-1"
+project_name                 = "careflow-portfolio"
+kubernetes_version           = "1.36"
+eks_endpoint_public_access   = true
+allowed_eks_api_cidrs        = ["203.0.113.10/32"] # replace with your trusted egress IP
+cluster_admin_principal_arn  = "arn:aws:iam::123456789012:role/REPLACE-ME-platform-admin"
+github_repository            = "REPLACE_ME/enterprise-multiregion-cloud-platform"
+github_oidc_provider_arn     = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+github_publisher_role_arn    = "arn:aws:iam::123456789012:role/careflow-github-ecr-publisher"
+
+# Two nodes preserve rollout and replica-distribution evidence. c7i-flex.large is the smallest
+# eligible x86_64 option with enough standard VPC-CNI pod slots and memory for this controller set.
+node_instance_types = ["c7i-flex.large"]
+node_min_size       = 2
+node_desired_size   = 2
+node_max_size       = 3
+
+# Account-constrained demo values. One-day retention is not the production recommendation.
+single_nat_gateway             = true
+database_multi_az              = false
+database_backup_retention_days = 1
+database_deletion_protection   = false
+database_skip_final_snapshot   = true
+ecr_force_delete               = true

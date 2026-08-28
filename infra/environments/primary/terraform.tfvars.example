@@ -1,0 +1,23 @@
+# PRODUCTION-TARGET PROFILE. SAFE DEFAULT: no cloud resources until deliberately enabled.
+enable_cloud_resources = false
+deployment_profile     = "production-target"
+
+aws_region                     = "us-east-1"
+project_name                   = "careflow-portfolio"
+kubernetes_version             = "1.36"
+eks_endpoint_public_access     = true
+allowed_eks_api_cidrs          = ["203.0.113.10/32"] # replace with your trusted egress IP
+cluster_admin_principal_arn    = "arn:aws:iam::123456789012:role/REPLACE-ME-platform-admin"
+github_repository              = "REPLACE_ME/enterprise-multiregion-cloud-platform"
+github_oidc_provider_arn       = "arn:aws:iam::123456789012:oidc-provider/token.actions.githubusercontent.com"
+github_publisher_role_arn      = "arn:aws:iam::123456789012:role/careflow-github-ecr-publisher"
+single_nat_gateway             = false
+node_instance_types            = ["t3.medium"]
+node_min_size                  = 2
+node_desired_size              = 3
+node_max_size                  = 6
+database_multi_az              = true
+database_backup_retention_days = 7
+database_deletion_protection   = true
+database_skip_final_snapshot   = false
+ecr_force_delete               = false

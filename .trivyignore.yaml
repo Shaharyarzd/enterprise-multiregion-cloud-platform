@@ -1,0 +1,10 @@
+misconfigurations:
+  - id: AVD-AWS-0104
+    paths:
+      - "terraform-aws-modules/eks/aws/node_groups.tf"
+    statement: >-
+      The module's node rule is limited by this repository to TCP/443 egress.
+      Trivy treats any 0.0.0.0/0 egress as unrestricted regardless of port.
+      Private nodes need HTTPS for registries, GitOps and AWS/public APIs until
+      an egress proxy or the required VPC interface endpoints are implemented.
+    expired_at: 2026-11-30

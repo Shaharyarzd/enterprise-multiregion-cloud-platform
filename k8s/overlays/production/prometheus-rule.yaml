@@ -1,0 +1,47 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: careflow-api
+  namespace: careflow
+  labels:
+    observability.careflow.io/scope: workload
+spec:
+  groups:
+    - name: careflow-api
+      rules:
+        - alert: CareFlowDatabaseUnavailable
+          expr: max(careflow_database_dependency_healthy) == 0
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: CareFlow cannot reach PostgreSQL
+            runbook: docs/operations.md#database-dependency-incident
+        - alert: CareFlowHighHttpErrorRate
+          expr: >-
+            sum(rate(careflow_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(careflow_http_requests_total[5m])), 0.001) > 0.05
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: CareFlow 5xx error ratio is above 5%
+            runbook: docs/operations.md#http-error-incident
+        - alert: CareFlowHighP95Latency
+          expr: >-
+            histogram_quantile(0.95,
+            sum by (le) (rate(careflow_http_request_duration_seconds_bucket[5m]))) > 0.5
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: CareFlow p95 request latency is above 500ms
+            runbook: docs/operations.md#latency-incident
+        - alert: CareFlowMetricsAbsent
+          expr: absent(careflow_process_uptime_seconds)
+          for: 5m
+          labels:
+            severity: critical
+          annotations:
+            summary: CareFlow metrics are absent
+            runbook: docs/operations.md#availability-incident

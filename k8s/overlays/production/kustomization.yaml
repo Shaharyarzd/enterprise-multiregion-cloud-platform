@@ -1,0 +1,60 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - external-secret.yaml
+  - ingress.yaml
+  - security-group-policy.yaml
+  - servicemonitor.yaml
+  - prometheus-rule.yaml
+
+images:
+  - name: careflow-api
+    newName: 000000000000.dkr.ecr.us-east-1.amazonaws.com/careflow-api
+    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+patches:
+  - target:
+      kind: ConfigMap
+      name: careflow-api-config
+    patch: |-
+      - op: replace
+        path: /data/ENVIRONMENT
+        value: production
+  - target:
+      kind: Namespace
+      name: careflow
+    patch: |-
+      - op: add
+        path: /metadata/labels/policy.careflow.io~1require-digest
+        value: "true"
+  - target:
+      kind: ServiceAccount
+      name: careflow-api
+    patch: |-
+      - op: add
+        path: /metadata/annotations
+        value:
+          eks.amazonaws.com/role-arn: arn:aws:iam::000000000000:role/REPLACE_ME-careflow-secrets
+  - target:
+      kind: NetworkPolicy
+      name: careflow-api-allow
+    patch: |-
+      - op: add
+        path: /spec/ingress/-
+        value:
+          from:
+            - ipBlock:
+                cidr: 10.20.0.0/16
+          ports:
+            - protocol: TCP
+              port: 8080
+      - op: add
+        path: /spec/egress/-
+        value:
+          to:
+            - ipBlock:
+                cidr: 10.20.20.0/22
+          ports:
+            - protocol: TCP
+              port: 5432

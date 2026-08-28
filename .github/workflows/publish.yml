@@ -1,0 +1,90 @@
+name: Publish CareFlow Image
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - apps/careflow-api/**
+      - .github/workflows/publish.yml
+
+permissions:
+  contents: write
+  id-token: write
+  pull-requests: write
+
+concurrency:
+  group: careflow-image-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: portfolio-publish
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+      - name: Run application unit tests
+        run: make test
+      - name: Build and run the container test target
+        run: |
+          set -euo pipefail
+          docker build --target test --tag careflow-api:test apps/careflow-api
+          docker run --rm careflow-api:test
+      - name: Build publication candidate
+        run: docker build --tag careflow-api:publish apps/careflow-api
+      - name: Scan publication candidate
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8 # v0.36.0
+        with:
+          image-ref: careflow-api:publish
+          scanners: vuln,secret
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
+          exit-code: '1'
+      - name: Assume the ECR publisher role with GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@99214aa6889fcddfa57764031d71add364327e59 # v6.1.3
+        with:
+          role-to-assume: ${{ vars.AWS_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          role-session-name: careflow-${{ github.run_id }}
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@b040164c4934333d597f3f9c67502ff28f814e9c # v2.1.6
+      - name: Publish and capture immutable digest
+        id: image
+        env:
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY_URL }}
+        run: |
+          set -euo pipefail
+          image="${ECR_REPOSITORY}:${GITHUB_SHA}"
+          docker tag careflow-api:publish "$image"
+          docker push "$image"
+          digest="$(docker image inspect "$image" --format '{{index .RepoDigests 0}}' | cut -d@ -f2)"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Published ${ECR_REPOSITORY}@${digest}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Create GitOps promotion pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY_URL }}
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+          branch="gitops/careflow-${GITHUB_SHA:0:12}"
+          python3 scripts/update-image-digest.py \
+            --repository "$ECR_REPOSITORY" \
+            --digest "$IMAGE_DIGEST"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add k8s/overlays/production/kustomization.yaml
+          git commit -m "chore(gitops): promote CareFlow ${GITHUB_SHA:0:12}"
+          git push origin "$branch"
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "Promote CareFlow ${GITHUB_SHA:0:12}" \
+            --body "Promotes the tested ECR artifact by immutable digest: \`${IMAGE_DIGEST}\`. Argo CD will reconcile only after this PR is reviewed and merged."

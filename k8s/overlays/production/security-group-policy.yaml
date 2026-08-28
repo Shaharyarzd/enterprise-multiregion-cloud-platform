@@ -1,0 +1,12 @@
+apiVersion: vpcresources.k8s.aws/v1beta1
+kind: SecurityGroupPolicy
+metadata:
+  name: careflow-api
+  namespace: careflow
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: careflow-api
+  securityGroups:
+      groupIds:
+        - sg-REPLACE_ME_CAREFLOW_WORKLOAD

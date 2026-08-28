@@ -1,0 +1,6 @@
+# Example only. Create the S3 state bucket separately and enable versioning/encryption.
+bucket       = "REPLACE-ME-terraform-state"
+key          = "careflow/primary/terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+use_lockfile = true

@@ -1,0 +1,13 @@
+# OWNER INPUT REQUIRED: copy to terraform.tfvars and replace both example values.
+account_id        = "123456789012"
+state_bucket_name = "careflow-tfstate-123456789012-us-east-1"
+
+aws_region         = "us-east-1"
+bootstrap_user_name = "careflow-portfolio-admin"
+project_name       = "careflow-portfolio"
+
+# OWNER INPUT REQUIRED: keep null until the exact GitHub owner/repository exists.
+# Example format only: "actual-owner/actual-repository"
+github_repository = null
+github_environment = "portfolio-publish"
+

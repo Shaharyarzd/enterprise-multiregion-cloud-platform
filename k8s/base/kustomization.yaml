@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - serviceaccount.yaml
+  - deployment.yaml
+  - service.yaml
+  - hpa.yaml
+  - pdb.yaml
+  - networkpolicy.yaml
+
+configMapGenerator:
+  - name: careflow-api-config
+    namespace: careflow
+    literals:
+      - ENVIRONMENT=local
+      - APP_VERSION=0.2.0
+      - DB_SECRET_FILE=/var/run/secrets/careflow/database.json
+      - DB_POOL_MIN_SIZE=1
+      - DB_POOL_MAX_SIZE=5
+      - DB_CONNECT_TIMEOUT_SECONDS=3
+      - DB_SSLMODE=verify-full
+      - DB_SSLROOTCERT=/etc/ssl/certs/aws-rds-global-bundle.pem

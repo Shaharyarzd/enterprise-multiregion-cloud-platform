@@ -1,0 +1,6 @@
+enable_dr              = false
+aws_region             = "us-west-2"
+kubernetes_version     = "1.36"
+eks_endpoint_public_access = true
+allowed_eks_api_cidrs  = ["203.0.113.10/32"]
+cluster_admin_principal_arn = "arn:aws:iam::123456789012:role/REPLACE-ME-platform-admin"

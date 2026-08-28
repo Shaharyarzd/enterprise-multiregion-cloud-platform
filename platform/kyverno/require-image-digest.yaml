@@ -1,0 +1,26 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: require-image-digest
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-production-image-digests
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+              namespaceSelector:
+                matchLabels:
+                  policy.careflow.io/require-digest: "true"
+      validate:
+        message: "Production container images must be pinned by sha256 digest."
+        foreach:
+          - list: "request.object.spec.containers"
+            deny:
+              conditions:
+                any:
+                  - key: "{{ regex_match('^.+@sha256:[a-f0-9]{64}$', element.image) }}"
+                    operator: Equals
+                    value: false

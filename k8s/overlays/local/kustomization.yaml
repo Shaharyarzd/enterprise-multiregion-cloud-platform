@@ -1,0 +1,33 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+  - postgres.yaml
+patches:
+  - target:
+      kind: HorizontalPodAutoscaler
+      name: careflow-api
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+  - target:
+      kind: Deployment
+      name: careflow-api
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/topologySpreadConstraints/0/topologyKey
+        value: kubernetes.io/hostname
+      - op: replace
+        path: /spec/template/spec/topologySpreadConstraints/0/whenUnsatisfiable
+        value: ScheduleAnyway
+  - target:
+      kind: ConfigMap
+      name: careflow-api-config
+    patch: |-
+      - op: replace
+        path: /data/DB_SSLMODE
+        value: disable
+      - op: add
+        path: /data/ALLOW_INSECURE_LOCAL_DATABASE
+        value: "true"

@@ -1,0 +1,6 @@
+bucket       = "REPLACE-ME-WITH-BOOTSTRAP-OUTPUT"
+key          = "careflow/primary/terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+use_lockfile = true
+
