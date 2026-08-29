@@ -2,26 +2,30 @@
 
 ## 60-second version
 
-“I built and statically validated the foundation of a production-oriented AWS reference platform for a fictional regulated workload: three-AZ networking, EKS, private RDS, hardened Kubernetes, policy definitions, CI security gates and cost controls. I also documented a multi-region target without claiming it already works—the DR code is currently a VPC/EKS scaffold with no regional data path or DNS failover. The next engineering milestone is one evidenced end-to-end delivery path, followed by a measured recovery drill.”
+“I built a production-oriented AWS reference platform for a fictional regulated SaaS workload, then validated one complete low-cost primary-region slice. Terraform created the reviewed VPC, EKS, private RDS and security boundaries. GitHub Actions used OIDC—no static AWS key—to test and scan an image, publish an immutable ECR digest and promote it through a pull request. Argo deployed two CareFlow replicas with External Secrets and Security Groups for Pods. The application passed PostgreSQL CRUD and restart persistence through an ALB. During a deliberately broken release, all 145 requests succeeded against the old replicas; a Git revert and Argo restored the prior digest in 153 seconds. I then destroyed the full workload and verified Terraform state returned to zero. I explicitly separate that cost-optimized proof from the stronger Multi-AZ, TLS, audit and DR controls a real regulated production platform still needs.”
 
-## Deep-dive prompts
+## Senior-level discussion points
 
-### Why warm standby?
+### Why two profiles?
 
-Discuss cost, operational complexity, database consistency, recovery objectives and whether active-active is actually justified.
+The `free-plan-demo` preserves the security and delivery path while using two `c7i-flex.large` workers, one NAT and Single-AZ RDS for a short teardown-oriented run. The production target retains stronger HA, retention and edge controls. Cost reduction is explicit rather than disguised as production architecture.
 
-### What happens when an AZ fails?
+### How was IAM handled?
 
-Discuss replica topology, PDBs, managed node groups, subnets, load balancing and database Multi-AZ behavior.
+GitHub uses repository/environment-scoped OIDC; humans use MFA-backed role sessions. Deployment permissions evolved from exact runtime denials and provider behavior. Broad managed administrator policies were not used, and temporary cleanup permission was scoped to two orphan ENIs and removed immediately.
 
-### What happens when a region fails?
+### How are public GitOps and private AWS identifiers reconciled?
 
-Walk through the DR runbook and distinguish infrastructure recovery from data recovery.
+Git contains portable desired state and the promoted digest. An ignored runtime generator patches the live VPC ID, RDS secret ARN, IAM role ARNs and private ECR repository into Argo's source composition. Guards reject those identifiers from tracked or staged files.
 
-### Where are secrets?
+### What did the failure drill prove?
 
-Explain why real secrets are not in Git, why the database can use a service-managed master secret, and why short-lived identity is preferable in CI.
+A bad readiness revision entered through GitOps while continuous ALB traffic ran. Kubernetes retained two Ready old replicas and served 145/145 requests. Recovery used Git revert → merge → Argo reconciliation, restoring the previous digest and full health in 153 seconds.
 
-### What would you change for a real healthcare environment?
+### What remains incomplete?
 
-Do not claim automatic compliance. Discuss governance, auditability, encryption/key ownership, access review, data classification, immutable logs, vulnerability management, incident response, backups and evidence.
+One Prometheus target timed out cross-node, Kyverno retained Argo drift despite enforcing policy, managed-secret rotation recovery was not authorized, trusted TLS lacked a controlled domain/certificate, and multi-region recovery remains unexecuted.
+
+### What changes for real healthcare production?
+
+Do not claim automatic compliance. Add governance, data classification, contracts, access review, immutable audit retention, vulnerability/patch operations, split database identities, production TLS/edge controls, backup validation and measured regional recovery/failback.

@@ -63,7 +63,7 @@ Portfolio readiness: **READY FOR WIFE REVIEW**.
 
 Remaining non-core gaps are the second Prometheus pod target, clean Kyverno GitOps convergence, RDS secret-rotation recovery authorization/evidence and optional trusted TLS. No credentials were committed, no secret values were captured, no employer/customer infrastructure or data was used, and only synthetic—not real patient—data was used.
 
-## Fourth controlled validation outcome
+## Fourth controlled validation outcome (historical)
 
 **Infrastructure deployment result: PASS. Runtime vertical-slice result: STOPPED WITH BLOCKERS. Terraform teardown and independent cleanup: PASS.** The single owner-authorized fourth run used the short-lived `careflow-deployment-role`, remote S3 state with native locking, and the previously reviewed `free-plan-demo` binary plan. Terraform applied exactly **88 creates, 0 changes and 0 destroys**. There was no retry or second apply.
 
@@ -90,7 +90,7 @@ The subsequent non-billable AWS checks used a fresh MFA source session and one-h
 
 A completely new remote `free-plan-demo` plan contains **89 creates, 9 reads, 0 updates, 0 deletes and 0 replacements**. The only count change from the fourth-run plan is the intended `AmazonEKSVPCResourceController` attachment. It retains one VPC, nine subnets, one NAT/EIP, one EKS cluster/node group with two `c7i-flex.large` workers, one private encrypted Single-AZ RDS instance with one-day retention, one immutable ECR repository, one workload KMS key, and no DR, WAF, additional NAT, Multi-AZ database or cross-region resource. No plan was applied.
 
-## Latest executed evidence matrix
+## Fourth-run executed evidence matrix (historical)
 
 | Area | Status | Executed result |
 |---|---|---|
@@ -187,7 +187,7 @@ The third run supplied new execution evidence for RDS managed-password provision
 
 No credentials or secret values were captured or committed. Evidence contains no employer, customer or real patient data.
 
-## Updated scores
+## Scores after the fourth run (historical)
 
 | Role | Code/design | Executed evidence |
 |---|---:|---:|

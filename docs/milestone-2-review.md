@@ -1,4 +1,6 @@
-# Milestone 2 Critical Review
+# Milestone 2 Critical Review (Historical Checkpoint)
+
+> This preserves the Milestone 2 assessment. Current capability status and scores are in [`implementation-status.md`](implementation-status.md).
 
 Review state: implementation complete, offline validation complete, cloud/runtime execution pending.
 

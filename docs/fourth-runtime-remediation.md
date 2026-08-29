@@ -1,6 +1,6 @@
-# Fourth-Run Runtime Remediation Review
+# Fourth-Run Runtime Remediation Review (Historical Checkpoint)
 
-This review follows the safely stopped and fully torn-down fourth controlled AWS validation. It does not replace or rewrite that failed runtime evidence, and it does not authorize another apply.
+This review follows the safely stopped and fully torn-down fourth controlled AWS validation. It preserves the pre-final-run checkpoint; the later final result is in [`aws-runtime-evidence.md`](aws-runtime-evidence.md).
 
 ## Narrow remediations
 

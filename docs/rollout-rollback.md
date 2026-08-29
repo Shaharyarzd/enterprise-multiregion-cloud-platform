@@ -1,6 +1,6 @@
 # Controlled Rollout and Rollback Proof
 
-This drill proves an ordinary Kubernetes rolling update before adding a progressive-delivery controller. It uses the same image with `APP_VERSION=0.2.0-readiness-failure` and `FORCE_READINESS_FAILURE=true` as the controlled v2 failure. No screenshot or runtime result is claimed here.
+This document defines the local and cloud recovery mechanisms. The final cloud run executed the GitOps variation: the bad revision served 145/145 requests from old replicas, and Git revert/merge/Argo restored the previous digest in 153 seconds. Detailed evidence is in [`aws-runtime-evidence.md`](aws-runtime-evidence.md).
 
 ## Local test
 
@@ -25,6 +25,8 @@ If v1 is unavailable, stop: the result does not prove safe rollout behavior. If 
 ## Cloud/GitOps variation
 
 Record the last-known-good digest from `main`, merge the equivalent reviewed failure commit through Git, and observe Argo report degraded health. Create and merge a Git revert of that exact failure commit; do not use `kubectl rollout undo` for cloud rollback. Argo must reconcile the reverted `main` commit.
+
+**Executed result:** PASS. The final run followed this sequence; two old replicas remained Ready, ALB traffic had zero failures, the prior digest returned and Argo reported Synced/Healthy.
 
 ## Recovery procedure
 

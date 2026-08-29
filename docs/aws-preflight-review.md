@@ -1,4 +1,6 @@
-# AWS Preflight Review
+# AWS Preflight Review (Historical Checkpoint)
+
+> This captures the initial preflight configuration and pricing review. It is not the final executed profile; see [`free-plan-demo-review.md`](free-plan-demo-review.md) and [`aws-runtime-evidence.md`](aws-runtime-evidence.md).
 
 Review date: 2026-08-27. Scope: no-cost, read-only AWS readiness in `us-east-1`. No Terraform apply or destructive command was run.
 

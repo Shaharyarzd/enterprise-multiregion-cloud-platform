@@ -1,6 +1,6 @@
 # Architecture
 
-The diagrams deliberately separate code that now exists from future architecture. “Implemented” means the repository contains the integration and validation path; it does not by itself claim runtime success. The first AWS execution created part of the primary stack, stopped safely on Free-plan restrictions, and fully tore down the workload; the end-to-end runtime path remains pending.
+The diagrams separate the executed primary-region slice from the stronger production target. “Implemented” describes repository capability; runtime claims are made only where the final controlled validation produced evidence. Earlier safely failed attempts remain historical in [`aws-runtime-evidence.md`](aws-runtime-evidence.md).
 
 ## Explicit execution profiles
 
@@ -27,18 +27,31 @@ flowchart LR
     GIT --> ARGO["Argo CD"]
     ARGO --> EKS["Amazon EKS"]
 
-    USER["Internet client"] -->|"HTTP redirect / HTTPS"| ALB["ALB + ACM TLS"]
+    USER["Internet client"] -->|"HTTP executed; ACM TLS optional"| ALB["Application Load Balancer"]
     ALB -->|"IP targets; /readyz health"| APP["CareFlow pods"]
     APP -->|"pooled PostgreSQL + verified TLS"| RDS[("Private RDS PostgreSQL")]
 
     ESO["External Secrets Operator"] -->|"IRSA; one secret ARN"| SM["RDS-managed Secrets Manager secret"]
-    ESO -->|"rotating mounted file"| APP
+    ESO -->|"rotation-aware mounted file"| APP
     APP -. "request, error, latency, health" .-> PROM["Focused Prometheus + alerts"]
 
     SGP["Pod security group"] -. "only TCP/5432" .-> RDS
 ```
 
-The implemented AWS path is a primary-region, synthetic-data portfolio slice. ECR uses immutable tags, the Kubernetes overlay pins a digest, and CI opens a pull request rather than changing the cluster. The default Terraform apply is a no-op until `enable_cloud_resources=true` is deliberately selected.
+The implemented AWS path is a primary-region, synthetic-data portfolio slice. The final run proved GitHub OIDC publication, immutable digest promotion, Argo reconciliation, two Ready CareFlow replicas, private RDS CRUD/restart persistence and two healthy ALB targets over HTTP. ECR uses immutable tags, the Kubernetes overlay pins a digest, and CI opens a pull request rather than changing the cluster. The default Terraform apply is a no-op until `enable_cloud_resources=true` is deliberately selected.
+
+## Ownership and configuration boundaries
+
+| Owner | Objects / fields |
+|---|---|
+| Terraform | AWS VPC/EKS/RDS/ECR/KMS/IAM resources and remote state |
+| GitHub Actions | tested/scanned image, immutable ECR digest and digest-only promotion PR |
+| Git | generic Kubernetes desired state, controller Applications and promoted digest |
+| Ignored runtime layer | live VPC ID, RDS secret ARN, IAM role ARNs, cluster name and private ECR repository URL |
+| Argo CD | reconciles Git state with the generated runtime patches; it does not write those values back to Git |
+| External Secrets | reads the single authorized AWS secret and owns the generated Kubernetes Secret |
+
+`scripts/configure-cloud-manifests.py` writes the runtime composition only below ignored `.runtime/`. Pre-commit/CI guards reject live AWS runtime identifiers from tracked or staged files.
 
 ## TARGET ARCHITECTURE
 
@@ -67,12 +80,12 @@ The target diagram is not runtime evidence. Cross-region data recovery, DNS fail
 
 ## Failure domains and honest limitations
 
-- Rolling updates keep at least one ready old pod because `maxUnavailable=0`; the controlled drill proves the failure and recovery procedure when executed.
+- Rolling updates keep ready old pods because `maxUnavailable=0`; the executed cloud drill served 145/145 requests while a bad revision stayed unready, and GitOps rollback restored full health in 153 seconds.
 - Two demo worker nodes across three configured AZs do not prove three-AZ compute availability. No cluster autoscaler is implemented.
 - The Free-plan demo uses one NAT gateway and single-AZ RDS. It is explicitly not production HA. The production target retains per-AZ NAT and Multi-AZ RDS.
 - RDS network ingress trusts only the CareFlow pod security group, not the shared worker-node group. VPC CNI network policy and security groups for pods use standard enforcement mode.
 - The small observability profile retains three days in ephemeral Prometheus storage. It proves operational signals, not durable audit retention.
-- The RDS-managed master credential is used to keep this slice small enough to demonstrate migrations and rotation. A real production design should split a privileged migration identity from a restricted runtime database role.
+- The RDS-managed master credential is used to keep this slice small enough to demonstrate migrations and rotation-aware delivery. Managed rotation recovery itself remains PENDING. A real production design should split a privileged migration identity from a restricted runtime database role.
 
 ## Important architecture decisions
 
@@ -92,7 +105,7 @@ The target diagram is not runtime evidence. Cross-region data recovery, DNS fail
 - **Alternatives considered:** EKS Pod Identity with controller-wide access; Secrets Store CSI Driver/ASCP; direct AWS SDK calls from the app.
 - **Trade-offs:** ESO adds one controller and a Kubernetes Secret copy. The app itself has no AWS SDK dependency; the IRSA trust still belongs to its dedicated service account.
 - **Cost implication:** ESO is compute-only; Secrets Manager charges for the managed secret and API calls.
-- **Operational implication:** ESO refreshes every five minutes and the app recreates its pool when the mounted JSON changes. Rotation must be tested in cloud.
+- **Operational implication:** ESO refreshes every five minutes and the app recreates its pool when the mounted JSON changes. Secret delivery executed successfully; managed-rotation recovery remains PENDING because the rotation request lacked authorization and made no change.
 
 ### Security groups for pods
 
@@ -101,7 +114,7 @@ The target diagram is not runtime evidence. Cross-region data recovery, DNS fail
 - **Alternatives considered:** Dedicated node group; only Kubernetes NetworkPolicy; service mesh/egress proxy.
 - **Trade-offs:** Better blast radius with added ENI capacity limits and pod-start latency.
 - **Cost implication:** Security groups have no direct hourly charge; extra ENI/IP consumption can affect sizing.
-- **Operational implication:** VPC CNI must have pod ENI enabled and pods must be recycled after mode changes.
+- **Operational implication:** VPC CNI must have pod ENI enabled. The final run verified v1.23.0, `CNINode/SecurityGroupsForPods`, `ENABLE_POD_ENI=true`, trunk ENIs and pod branch ENIs.
 
 ### ECR publication and GitOps promotion
 
@@ -110,14 +123,14 @@ The target diagram is not runtime evidence. Cross-region data recovery, DNS fail
 - **Alternatives considered:** GHCR; mutable tags; direct `kubectl set image` from CI.
 - **Trade-offs:** ECR has small storage/API cost and requires AWS setup; promotion takes a reviewed merge.
 - **Cost implication:** ECR storage and transfer are billed; lifecycle policy keeps only 20 images.
-- **Operational implication:** Rollback is a Git revert to a known digest; the CI role has no Kubernetes permission.
+- **Operational implication:** Rollback is a Git revert to a known digest; the CI role has no Kubernetes permission. This path restored the prior digest through Argo in 153 seconds.
 
-### ALB and TLS without a required purchased domain
+### ALB proof without requiring a purchased domain
 
-- **Decision:** Implement ALB IP targets, ACM certificate input, HTTPS redirect, and the TLS 1.2/1.3 policy; leave hostname optional.
+- **Decision:** Use HTTP as the executable no-domain default, with optional ACM certificate input, HTTPS redirect and a TLS 1.2/1.3 policy when a validated domain exists.
 - **Why:** It demonstrates the real AWS traffic path while allowing any existing validated domain.
 - **Alternatives considered:** NLB; ingress-nginx; buying a portfolio domain.
-- **Trade-offs:** Trusted TLS cannot be fully tested without control of a domain name and ACM validation. The ALB DNS name alone will not match a custom certificate.
+- **Trade-offs:** The final run proved HTTP routing and two healthy targets. Trusted TLS remains PENDING because the ALB DNS name alone cannot establish hostname-valid public TLS.
 - **Cost implication:** ALB hours/capacity units are billed; ACM public certificates are generally not the main cost driver.
 - **Operational implication:** `/readyz` controls target health; a bad database removes targets, so at least two replicas matter.
 
@@ -128,7 +141,7 @@ The target diagram is not runtime evidence. Cross-region data recovery, DNS fail
 - **Alternatives considered:** Full kube-prometheus stack; CloudWatch Container Insights; managed Prometheus.
 - **Trade-offs:** No included dashboards and only ephemeral three-day retention.
 - **Cost implication:** Uses existing worker capacity; no managed telemetry bill by default.
-- **Operational implication:** Four alerts cover database loss, error ratio, p95 latency, and missing metrics; alert receivers are configured only at execution time.
+- **Operational implication:** Four alerts cover database loss, error ratio, p95 latency and missing metrics. The metrics/rules executed, but one of two cross-node CareFlow scrape targets timed out; durable receivers remain outside the demo.
 
 ### WAF deferred
 

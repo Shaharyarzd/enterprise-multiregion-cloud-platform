@@ -1,6 +1,6 @@
-# Free-plan Demo Review
+# Free-plan Demo Review (Historical Planning Checkpoint)
 
-Review date: 2026-08-27. Scope: redesign, validation, retained bootstrap-policy correction, and a fresh remote Terraform plan only. No CareFlow workload apply was authorized or run.
+Review date: 2026-08-27. Scope at this checkpoint: redesign, validation, retained bootstrap-policy correction and a fresh remote Terraform plan only. The later final run used a new 89-create plan; current evidence is in [`aws-runtime-evidence.md`](aws-runtime-evidence.md).
 
 ## A. Selected worker type
 

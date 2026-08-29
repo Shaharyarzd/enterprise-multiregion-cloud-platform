@@ -1,4 +1,4 @@
-# Milestone 3 Runtime Evidence
+# Runtime Evidence
 
 Local evidence date: 2026-08-26. A separately authorized AWS attempt ran on 2026-08-27 and is recorded in [`aws-runtime-evidence.md`](aws-runtime-evidence.md). `PASS` means the stated command or path genuinely ran. `PENDING` means it was not exercised. `PARTIAL` and `FAIL` are retained rather than converted into inferred success.
 
@@ -18,7 +18,7 @@ Guarded teardown and the independent AWS inventory passed. Remote workload state
 
 Portfolio readiness: **READY FOR WIFE REVIEW**.
 
-## Evidence matrix
+## Historical Milestone 3 evidence matrix
 
 | Evidence area | Status | Executed proof or reason |
 |---|---|---|
@@ -30,12 +30,12 @@ Portfolio readiness: **READY FOR WIFE REVIEW**.
 | Rollout failure | PASS | A deliberately readiness-broken revision stayed unready while the prior replicas continued serving |
 | Rollback | PASS | `kubectl rollout undo` recovered the Deployment; post-rollback health and data smoke tests passed |
 | Local observability | PASS | The live `/metrics` endpoint reported `careflow_database_dependency_healthy 1` |
-| Prometheus/controller observability | PARTIAL cloud / PASS local metric | Argo and approved controller Applications began reconciliation on EKS; no Prometheus target, rule evaluation, alert firing or notification delivery was exercised |
-| AWS | PASS infrastructure / PARTIAL runtime | The fourth authorized apply created all 88 reviewed resources; EKS, two Ready private workers and RDS passed. Runtime stopped on pod-ENI IAM and ALB-controller VPC-discovery blockers before CareFlow deployment |
-| ALB/TLS | PENDING | HTTP ALB routing can be proved without a domain in a future authorized run; browser-trusted TLS still requires an owner-controlled domain and validated ACM certificate |
-| RDS | PASS infrastructure / PENDING runtime | Private encrypted Single-AZ RDS and its managed secret reached availability; managed rotation was enabled. No application connection, migration or recovery test ran |
-| Rotation | PASS (local) / PASS AWS configuration / PENDING AWS recovery | Local pool replacement passed; AWS reported RDS-managed rotation enabled, but no CareFlow pod observed a rotated credential |
-| Teardown | PASS | Local cleanup passed. All four AWS attempts were destroyed, remote resource state is empty, the owner deleted the one zero-byte RDS log group, and the independent API inventory is clean apart from disabled keys in AWS-enforced `PendingDeletion` |
+| Prometheus/controller observability | PARTIAL cloud / PASS local metric | Final cloud run proved Prometheus metrics/rules; one of two cross-node targets timed out |
+| AWS | PASS | Final controlled run created the reviewed 89-resource stack and proved the core application/data/edge path |
+| ALB/TLS | PASS HTTP / PENDING trusted TLS | Two ALB targets and HTTP path passed; no controlled domain/validated ACM certificate was used |
+| RDS | PASS application / PENDING rotation recovery | Private encrypted RDS, migrations, CRUD and restart persistence passed; managed rotation recovery did not execute |
+| Rotation | PASS local / PENDING AWS recovery | Local pool replacement passed; AWS rotation was denied before changing credentials |
+| Teardown | PASS | Remote workload state is 0 and the independent inventory is empty apart from expected KMS keys in `PendingDeletion` |
 
 ## Executed local proof
 
@@ -87,13 +87,13 @@ Raw evidence remains private because `artifacts/` is ignored. Generated credenti
 | Trivy repository scan | PASS | dependency, secret and misconfiguration scan had zero HIGH/CRITICAL findings with generated `.terraform` trees excluded |
 | Terraform offline validation | PASS | primary and DR roots had previously initialized with backend disabled and validated; this remains static evidence, not an AWS plan/apply claim |
 
-## Cloud-only evidence still required
+## Historical cloud gaps after the fourth run
 
-AWS identity, remote locking, reviewed remote-plan gates, a complete 88-resource Terraform apply, an `ACTIVE` EKS control plane, two Ready private `c7i-flex.large` workers, RDS managed-secret/database creation, the custom launch-template/service-linked-role paths, Argo bootstrap and guarded teardown now have evidence. Controller reconciliation stopped safely when live events proved missing EKS VPC-resource-controller authorization and missing explicit ALB-controller VPC/region values. GitHub publication, CareFlow-on-EKS, RDS application connectivity/rotation recovery, ALB/TLS, Prometheus rule evaluation/notification, failure/rollback on AWS, and DR timing remain pending. Local success does not upgrade those cloud claims.
+At the fourth-run checkpoint, GitHub publication, CareFlow-on-EKS, RDS application connectivity/rotation recovery, ALB/TLS, Prometheus rules, cloud rollback and DR timing were pending. The final run subsequently proved every listed core path except managed-rotation recovery, trusted TLS, complete two-target Prometheus scraping and DR. This paragraph is retained to preserve checkpoint history rather than describe current status.
 
 Post-fourth-run remediation adds the exact AWS-managed EKS VPC resource-controller policy, explicit ALB-controller `us-east-1`/VPC configuration, controller ordering, node/trunk readiness gates, and an executable HTTP-only no-domain ingress path. Repository invariants, Terraform validation, chart/Kustomize rendering, schema checks and workflow lint pass. These are readiness controls only; the two runtime blockers remain historical FAIL evidence until a new explicitly authorized AWS validation proves them.
 
-The fresh remote remediation plan passed at 89 creates/9 reads/0 updates/0 deletes/0 replacements, with empty workload state and native lock acquisition/release. Bootstrap remained a no-op. This plan was not applied, so the Cloud Runtime Validation Score remains 52/100.
+The fresh remediation plan at that checkpoint passed at 89 creates/9 reads/0 updates/0 deletes/0 replacements. It was later replaced by a completely fresh, reviewed final plan and applied during the separately authorized run recorded in [`aws-runtime-evidence.md`](aws-runtime-evidence.md).
 
 ## Machine-readable evidence contract
 

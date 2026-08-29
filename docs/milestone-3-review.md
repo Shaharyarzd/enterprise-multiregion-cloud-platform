@@ -1,6 +1,6 @@
-# Milestone 3 Critical Review
+# Milestone 3 Critical Review (Historical Checkpoint)
 
-Review state: the owner-safe local execution path has now passed end to end, including container, PostgreSQL, rotation, kind failure and rollback evidence. Cloud runtime evidence remains pending because it was neither needed nor authorized for this milestone.
+Review state at Milestone 3: the owner-safe local execution path passed end to end, while cloud runtime was not yet authorized. This document preserves that checkpoint; current results and scores are in [`implementation-status.md`](implementation-status.md) and [`aws-runtime-evidence.md`](aws-runtime-evidence.md).
 
 ## Separate scores
 
