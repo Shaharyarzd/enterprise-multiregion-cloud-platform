@@ -28,6 +28,37 @@ Record the last-known-good digest from `main`, merge the equivalent reviewed fai
 
 **Executed result:** PASS. The final run followed this sequence; two old replicas remained Ready, ALB traffic had zero failures, the prior digest returned and Argo reported Synced/Healthy.
 
+```mermaid
+sequenceDiagram
+    participant Client as Synthetic client
+    participant ALB
+    participant Git as Git main
+    participant Argo as Argo CD
+    participant EKS as EKS / CareFlow
+    participant RDS as Private RDS
+
+    Client->>ALB: Send continuous traffic
+    ALB->>EKS: Route to good digest
+    Git->>Argo: Merge bad readiness revision
+    Argo->>EKS: Reconcile bad revision
+    EKS-->>ALB: Bad pod NotReady and excluded
+    EKS-->>ALB: Two old replicas remain Ready
+
+    loop 145 synthetic requests
+        Client->>ALB: HTTP request
+        ALB->>EKS: Route to old Ready replicas
+        EKS-->>Client: Success
+    end
+    Note over Client,EKS: Executed evidence — 145/145 succeeded
+
+    Git->>Argo: Merge Git revert to main
+    Argo->>EKS: Restore previous digest
+    EKS->>RDS: Verify synthetic data
+    RDS-->>EKS: Data preserved
+    EKS-->>ALB: Two targets healthy
+    Note over ALB,Git: Executed rollback completed in 153 seconds
+```
+
 ## Recovery procedure
 
 For the local imperative drill, the script performs `kubectl rollout undo`. For production GitOps, revert the promotion commit or merge a PR that restores the recorded last-known-good digest. Success requires all five signals: the running pod `imageID` contains that exact previous digest; Argo reports `Synced` and `Healthy`; every CareFlow pod is Ready; ALB targets are healthy; and continuous traffic plus `/readyz` and the appointment smoke test recover. A Kubernetes-only rollback does not satisfy the cloud proof.

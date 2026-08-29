@@ -16,29 +16,114 @@ The same Terraform modules support two guarded profiles; they are not separate a
 
 `c7i-flex.large` is x86_64 and Free-plan eligible in this account. Two `t3.small` nodes were rejected during design review despite their lower price: each offers only 11 standard VPC-CNI pod slots and roughly 1.5 GiB allocatable memory, while the required system, GitOps, security, observability and two application replicas need about 28 steady-state pods. Two `c7i-flex.large` nodes provide roughly 3.34 GiB and 1.93 vCPU allocatable each, enough pod density and useful headroom without changing the application path. The one-day RDS retention is an AWS Free-plan execution constraint and is **not** the recommended production retention.
 
-## IMPLEMENTED ARCHITECTURE
+## Validated primary-region architecture
 
 ```mermaid
-flowchart LR
-    DEV["GitHub source"] --> CI["Tests + Trivy container gate"]
-    CI -->|"OIDC, main only"| ECR["Immutable Amazon ECR image"]
-    CI --> PR["GitOps digest promotion PR"]
-    PR --> GIT["Reviewed production desired state"]
-    GIT --> ARGO["Argo CD"]
-    ARGO --> EKS["Amazon EKS"]
+flowchart TB
+    USER["Internet user"]
+    GHA["GitHub Actions<br/>OIDC; no static AWS keys"]
+    MAIN["main<br/>promoted digest"]
 
-    USER["Internet client"] -->|"HTTP executed; ACM TLS optional"| ALB["Application Load Balancer"]
-    ALB -->|"IP targets; /readyz health"| APP["CareFlow pods"]
-    APP -->|"pooled PostgreSQL + verified TLS"| RDS[("Private RDS PostgreSQL")]
+    subgraph AWS["Validated AWS primary region"]
+        ECR["Immutable ECR digest"]
+        SM["RDS-managed secret<br/>rotation recovery PENDING"]
+        EKSCP["EKS control plane<br/>ACTIVE"]
 
-    ESO["External Secrets Operator"] -->|"IRSA; one secret ARN"| SM["RDS-managed Secrets Manager secret"]
-    ESO -->|"rotation-aware mounted file"| APP
-    APP -. "request, error, latency, health" .-> PROM["Focused Prometheus + alerts"]
+        subgraph VPC["CareFlow VPC"]
+            subgraph PUB["Public subnets"]
+                ALB["ALB<br/>HTTP listener"]
+            end
 
-    SGP["Pod security group"] -. "only TCP/5432" .-> RDS
+            subgraph APPNET["Private application subnets"]
+                subgraph AZA["AZ A"]
+                    NODE1["Private worker 1"]
+                    APP1["CareFlow replica 1"]
+                    NODE1 --> APP1
+                end
+                subgraph AZB["AZ B"]
+                    NODE2["Private worker 2"]
+                    APP2["CareFlow replica 2"]
+                    NODE2 --> APP2
+                end
+
+                PLATFORM["Argo CD + controllers"]
+                SVC["Kubernetes Service"]
+                KYV["Kyverno<br/>enforced; Argo sync PARTIAL"]
+                ESO["External Secrets"]
+                PROM["Prometheus<br/>one target PARTIAL"]
+                SGP["Security Groups for Pods<br/>branch ENIs"]
+            end
+
+            subgraph DBNET["Private database subnets"]
+                RDS[("Encrypted Single-AZ RDS<br/>PostgreSQL")]
+            end
+
+            ALB -->|"Ingress backend"| SVC
+            SVC -. "IP target; /readyz" .-> APP1
+            SVC -. "IP target; /readyz" .-> APP2
+            SGP --> APP1
+            SGP --> APP2
+            APP1 -->|"TLS / TCP 5432"| RDS
+            APP2 -->|"TLS / TCP 5432"| RDS
+        end
+
+        EKSCP --> NODE1
+        EKSCP --> NODE2
+        ESO -->|"IRSA read; one secret"| SM
+        ESO -->|"mounted JSON"| APP1
+        ESO -->|"mounted JSON"| APP2
+        KYV -. "digest admission" .-> APP1
+        KYV -. "digest admission" .-> APP2
+        APP1 -. "metrics" .-> PROM
+        APP2 -. "metrics" .-> PROM
+        ECR -. "digest-pinned pull" .-> APP1
+        ECR -. "digest-pinned pull" .-> APP2
+    end
+
+    USER --> ALB
+    GHA --> ECR
+    GHA --> MAIN
+    MAIN --> PLATFORM
 ```
 
 The implemented AWS path is a primary-region, synthetic-data portfolio slice. The final run proved GitHub OIDC publication, immutable digest promotion, Argo reconciliation, two Ready CareFlow replicas, private RDS CRUD/restart persistence and two healthy ALB targets over HTTP. ECR uses immutable tags, the Kubernetes overlay pins a digest, and CI opens a pull request rather than changing the cluster. The default Terraform apply is a no-op until `enable_cloud_resources=true` is deliberately selected.
+
+## Validated CI/CD and GitOps flow
+
+```mermaid
+flowchart LR
+    PUSH["Git push"] --> ACTIONS["GitHub Actions"]
+
+    subgraph CI["Build and security"]
+        ACTIONS --> TESTS["Unit + container tests"]
+        TESTS --> TRIVY["Trivy HIGH/CRITICAL gate"]
+        TRIVY --> OIDC["GitHub OIDC<br/>no static AWS credentials"]
+    end
+
+    subgraph AWS["AWS publication"]
+        OIDC --> ECR["Immutable ECR digest"]
+    end
+
+    subgraph GIT["Public Git ownership"]
+        ECR --> PR["Digest-only PR"]
+        PR --> MERGE["Squash merge to main"]
+        MERGE --> DESIRED["Generic manifests<br/>+ promoted digest"]
+    end
+
+    subgraph RUNTIME["Ignored local runtime ownership"]
+        VALUES[".runtime patches<br/>VPC, secret, roles, ECR URL"]
+    end
+
+    subgraph CLUSTER["Kubernetes reconciliation"]
+        DESIRED --> ARGO["Argo CD"]
+        VALUES --> ARGO
+        ARGO --> KYV["Kyverno digest enforcement"]
+        KYV --> CARE["CareFlow on EKS"]
+        ECR -. "exact digest" .-> CARE
+    end
+```
+
+The workflow cannot deploy directly with `kubectl` or Helm. Git owns the portable desired state and digest; the ignored runtime layer supplies live AWS-specific values to Argo without publishing them.
 
 ## Ownership and configuration boundaries
 
@@ -53,22 +138,9 @@ The implemented AWS path is a primary-region, synthetic-data portfolio slice. Th
 
 `scripts/configure-cloud-manifests.py` writes the runtime composition only below ignored `.runtime/`. Pre-commit/CI guards reject live AWS runtime identifiers from tracked or staged files.
 
-## TARGET ARCHITECTURE
+## Production and DR target — not runtime evidence
 
-```mermaid
-flowchart TB
-    DNS["Health-evaluated DNS"] --> PRIMARY["Primary regional cell"]
-    DNS -. "measured failover" .-> DR["Warm standby regional cell"]
-    WAF["Optional WAF after traffic/cost evidence"] --> PRIMARY
-    PRIMARY --> BACKUP["Cross-region recovery data source"]
-    BACKUP --> DR
-    AUDIT["Central immutable audit archive"] --- PRIMARY
-    AUDIT --- DR
-    SIGN["Signed images + admission verification"] --> PRIMARY
-    SIGN --> DR
-```
-
-The target diagram is not runtime evidence. Cross-region data recovery, DNS failover, WAF, centralized audit retention, artifact signing, and admission verification remain planned. The existing DR Terraform root is only a disabled VPC/EKS scaffold.
+The stronger target adds Multi-AZ RDS, per-AZ NAT where justified, domain-valid TLS, edge logging/WAF controls, durable audit/observability, signed artifacts, a cross-region recovery data source and health-evaluated DNS failover. These are **design-level/PENDING**. The existing DR Terraform root is only a disabled VPC/EKS scaffold; no DR data path or failover was executed.
 
 ## Request and dependency behavior
 
