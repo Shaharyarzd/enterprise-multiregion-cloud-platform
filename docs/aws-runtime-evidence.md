@@ -16,6 +16,36 @@ Prometheus was Ready and successfully scraped CareFlow. Request rate, latency an
 
 The controlled broken-readiness revision was merged through GitOps while continuous ALB traffic ran. Kubernetes retained two Ready old replicas while one new replica remained unready. The drill served **145 requests with 0 failures over 222 seconds**. Rollback used **Git revert → PR #4 squash merge → `main` → Argo reconciliation**, not `kubectl rollout undo`: the prior digest returned, Argo was Synced/Healthy, two CareFlow replicas were Ready, both ALB targets were healthy, HTTP returned 200 and the RDS dataset hash was unchanged. Recovery completed in **153 seconds**. The RDS managed-secret rotation command was rejected before rotation because the deployment role lacks the rotation authorization; no IAM expansion was made, traffic remained 30/30 successful during the bounded attempt, and application rotation recovery remains **PENDING**.
 
+### Executed failed rollout and GitOps rollback
+
+```mermaid
+sequenceDiagram
+    participant Client as Synthetic client
+    participant ALB
+    participant GitOps as Git main / Argo CD
+    participant App as CareFlow on EKS
+    participant RDS as Private RDS
+
+    Client->>ALB: Continuous traffic to healthy version
+    ALB->>App: Route to Ready replicas
+    GitOps->>App: Reconcile bad readiness revision
+    App-->>ALB: Bad pod excluded; old replicas serve
+
+    loop 145 synthetic requests
+        Client->>ALB: HTTP request
+        ALB->>App: Route to old Ready replicas
+        App-->>Client: Success
+    end
+    Note over Client,App: Executed evidence: 145/145 requests succeeded
+
+    GitOps->>GitOps: Git revert merged to main
+    GitOps->>App: Argo restores previous digest
+    App->>RDS: Verify synthetic data
+    RDS-->>App: Data preserved
+    App-->>ALB: Two targets healthy
+    Note over GitOps,App: Executed rollback: 153 seconds
+```
+
 ### Deterministic in-place corrections
 
 - Replaced the changed owner ISP address with the current exact `/32` EKS API allowlist; no network boundary was broadened.

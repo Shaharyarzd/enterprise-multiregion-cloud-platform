@@ -25,58 +25,25 @@ This repository answers that question with two deliberately separate profiles:
 
 ## Executed AWS runtime proof
 
-The final controlled validation proved this path with real AWS and GitHub services. The right-hand target is intentionally marked as design-only.
+The final controlled validation proved this runtime path on AWS. Delivery, security ownership and resilience evidence are linked below.
 
 ```mermaid
 flowchart LR
-    USER["User"]
-    GH["GitHub Actions<br/>OIDC; no static keys"]
-    ECR["ECR<br/>immutable digest"]
-    MAIN["Digest PR<br/>squash merge to main"]
+    USER["Internet user"]
 
-    subgraph PRIMARY["Validated primary region — PASS"]
+    subgraph PRIMARY["Validated AWS primary region"]
         subgraph VPC["CareFlow VPC"]
-            subgraph PUBLIC["Public subnets"]
-                ALB["ALB<br/>HTTP validated"]
-            end
-            subgraph PRIVATE["Private application subnets"]
-                EKS["EKS private workers<br/>2 nodes / 2 AZs"]
-                ARGO["Argo CD"]
-                SVC["Kubernetes Service"]
-                CARE["CareFlow x2"]
-                SGP["Security Groups for Pods<br/>branch ENIs"]
-                ESO["External Secrets"]
-                KYV["Kyverno<br/>enforcement PASS; sync PARTIAL"]
-                PROM["Prometheus<br/>PARTIAL"]
-                EKS --> CARE
-                ARGO --> CARE
-                SGP --> CARE
-                ESO --> CARE
-                KYV -. "digest policy" .-> CARE
-                CARE -. "metrics" .-> PROM
-            end
-            subgraph DATA["Private database subnets"]
-                RDS[("RDS PostgreSQL<br/>private + encrypted")]
-            end
-            ALB --> SVC
-            SVC --> CARE
-            CARE --> RDS
-        end
-        SECRET["RDS managed secret<br/>delivery PASS; rotation PENDING"]
-        ESO -->|"one-secret read"| SECRET
-    end
+            ALB["Public ALB"]
+            APP["CareFlow on EKS<br/>2 private workers / 2 AZs / 2 replicas"]
+            RDS[("Private encrypted<br/>RDS PostgreSQL")]
+            OBS["Prometheus<br/>PARTIAL"]
 
-    subgraph TARGET["Production target / DR — DESIGN ONLY"]
-        HA["Multi-AZ database<br/>per-AZ resilience"]
-        TLS["Trusted TLS / WAF<br/>PENDING"]
-        DR["Warm standby + DNS failover<br/>PENDING"]
+            ALB --> APP --> RDS
+            APP -. "metrics" .-> OBS
+        end
     end
 
     USER --> ALB
-    GH --> ECR
-    GH --> MAIN
-    MAIN --> ARGO
-    ECR -. "digest-pinned image" .-> CARE
 ```
 
 | Evidence | Result |

@@ -21,69 +21,34 @@ The same Terraform modules support two guarded profiles; they are not separate a
 ```mermaid
 flowchart TB
     USER["Internet user"]
-    GHA["GitHub Actions<br/>OIDC; no static AWS keys"]
-    MAIN["main<br/>promoted digest"]
 
     subgraph AWS["Validated AWS primary region"]
-        ECR["Immutable ECR digest"]
-        SM["RDS-managed secret<br/>rotation recovery PENDING"]
-        EKSCP["EKS control plane<br/>ACTIVE"]
-
         subgraph VPC["CareFlow VPC"]
             subgraph PUB["Public subnets"]
-                ALB["ALB<br/>HTTP listener"]
+                ALB["Public ALB<br/>HTTP validated"]
             end
 
             subgraph APPNET["Private application subnets"]
-                subgraph AZA["AZ A"]
-                    NODE1["Private worker 1"]
-                    APP1["CareFlow replica 1"]
-                    NODE1 --> APP1
-                end
-                subgraph AZB["AZ B"]
-                    NODE2["Private worker 2"]
-                    APP2["CareFlow replica 2"]
-                    NODE2 --> APP2
-                end
-
-                PLATFORM["Argo CD + controllers"]
                 SVC["Kubernetes Service"]
-                KYV["Kyverno<br/>enforced; Argo sync PARTIAL"]
-                ESO["External Secrets"]
+                NODES["EKS workers<br/>2 private nodes / 2 AZs"]
+                CARE["CareFlow<br/>2 Ready replicas"]
                 PROM["Prometheus<br/>one target PARTIAL"]
-                SGP["Security Groups for Pods<br/>branch ENIs"]
+
+                NODES --> CARE
+                SVC --> CARE
+                CARE -. "metrics" .-> PROM
             end
 
             subgraph DBNET["Private database subnets"]
                 RDS[("Encrypted Single-AZ RDS<br/>PostgreSQL")]
             end
 
-            ALB -->|"Ingress backend"| SVC
-            SVC -. "IP target; /readyz" .-> APP1
-            SVC -. "IP target; /readyz" .-> APP2
-            SGP --> APP1
-            SGP --> APP2
-            APP1 -->|"TLS / TCP 5432"| RDS
-            APP2 -->|"TLS / TCP 5432"| RDS
+            ALB --> SVC
+            CARE --> RDS
         end
-
-        EKSCP --> NODE1
-        EKSCP --> NODE2
-        ESO -->|"IRSA read; one secret"| SM
-        ESO -->|"mounted JSON"| APP1
-        ESO -->|"mounted JSON"| APP2
-        KYV -. "digest admission" .-> APP1
-        KYV -. "digest admission" .-> APP2
-        APP1 -. "metrics" .-> PROM
-        APP2 -. "metrics" .-> PROM
-        ECR -. "digest-pinned pull" .-> APP1
-        ECR -. "digest-pinned pull" .-> APP2
     end
 
     USER --> ALB
-    GHA --> ECR
-    GHA --> MAIN
-    MAIN --> PLATFORM
 ```
 
 The implemented AWS path is a primary-region, synthetic-data portfolio slice. The final run proved GitHub OIDC publication, immutable digest promotion, Argo reconciliation, two Ready CareFlow replicas, private RDS CRUD/restart persistence and two healthy ALB targets over HTTP. ECR uses immutable tags, the Kubernetes overlay pins a digest, and CI opens a pull request rather than changing the cluster. The default Terraform apply is a no-op until `enable_cloud_resources=true` is deliberately selected.
@@ -93,37 +58,38 @@ The implemented AWS path is a primary-region, synthetic-data portfolio slice. Th
 ```mermaid
 flowchart LR
     PUSH["Git push"] --> ACTIONS["GitHub Actions"]
-
-    subgraph CI["Build and security"]
-        ACTIONS --> TESTS["Unit + container tests"]
-        TESTS --> TRIVY["Trivy HIGH/CRITICAL gate"]
-        TRIVY --> OIDC["GitHub OIDC<br/>no static AWS credentials"]
-    end
-
-    subgraph AWS["AWS publication"]
-        OIDC --> ECR["Immutable ECR digest"]
-    end
-
-    subgraph GIT["Public Git ownership"]
-        ECR --> PR["Digest-only PR"]
-        PR --> MERGE["Squash merge to main"]
-        MERGE --> DESIRED["Generic manifests<br/>+ promoted digest"]
-    end
-
-    subgraph RUNTIME["Ignored local runtime ownership"]
-        VALUES[".runtime patches<br/>VPC, secret, roles, ECR URL"]
-    end
-
-    subgraph CLUSTER["Kubernetes reconciliation"]
-        DESIRED --> ARGO["Argo CD"]
-        VALUES --> ARGO
-        ARGO --> KYV["Kyverno digest enforcement"]
-        KYV --> CARE["CareFlow on EKS"]
-        ECR -. "exact digest" .-> CARE
-    end
+    ACTIONS --> TESTS["Tests + container tests"]
+    TESTS --> TRIVY["Trivy gate"]
+    TRIVY --> OIDC["GitHub OIDC<br/>no static keys"]
+    OIDC --> ECR["ECR<br/>immutable digest"]
+    ECR --> PR["Digest-only PR"]
+    PR --> MAIN["Squash merge<br/>to main"]
+    MAIN --> ARGO["Argo CD"]
+    ARGO --> KYVERNO["Kyverno<br/>digest enforcement"]
+    KYVERNO --> CARE["EKS / CareFlow"]
 ```
 
-The workflow cannot deploy directly with `kubectl` or Helm. Git owns the portable desired state and digest; the ignored runtime layer supplies live AWS-specific values to Argo without publishing them.
+The workflow cannot deploy directly with `kubectl` or Helm. Kyverno enforcement executed successfully; some Kyverno/Argo live-object convergence remained **PARTIAL**.
+
+## Secrets and runtime configuration
+
+```mermaid
+flowchart TB
+    IRSA["Workload identity<br/>IRSA"] --> ESO["External Secrets"]
+    MANAGED["RDS-managed secret"] --> ESO
+    ESO --> KSECRET["Kubernetes Secret"]
+    KSECRET --> MOUNT["Mounted JSON"]
+    MOUNT --> CARE["CareFlow"]
+    CARE --> RDS[("Private RDS")]
+
+    GIT["Public Git<br/>generic templates"] --> COMPOSE["Runtime composition"]
+    VALUES["Live AWS values"] --> COMPOSE
+    COMPOSE --> RUNTIME["Ignored .runtime<br/>not committed"]
+    RUNTIME -. "references" .-> ESO
+    RUNTIME -. "configuration" .-> CARE
+```
+
+External Secrets delivered the database credential successfully. RDS managed-secret rotation recovery remains **PENDING**; the final run did not prove rotation.
 
 ## Ownership and configuration boundaries
 
