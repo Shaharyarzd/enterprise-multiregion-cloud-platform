@@ -1,6 +1,67 @@
 # AWS Runtime Evidence
 
-Execution date: 2026-08-27. Region: `us-east-1`. Account identifiers, resource IDs, credentials and secret values are omitted. Raw plans and ephemeral evidence remain under ignored `artifacts/`.
+Execution dates: 2026-08-27 through 2026-08-29. Region: `us-east-1`. Account identifiers, resource IDs, credentials and secret values are omitted. Raw plans and ephemeral evidence remain under ignored `artifacts/`.
+
+## Final controlled validation outcome
+
+**Core end-to-end runtime path: PASS. Mandatory teardown: PASS.** The owner-authorized final run used the MFA-backed short-lived deployment/platform role chain, the remote S3 backend with native locking and the reviewed `free-plan-demo` plan. The immediate pre-apply plan was exactly **89 creates, 9 reads, 0 updates, 0 deletes and 0 replacements**; Terraform completed with **89 added, 0 changed and 0 destroyed**.
+
+Infrastructure reached the intended runtime state: the EKS control plane and managed node group were `ACTIVE`; two private `c7i-flex.large` workers were Ready across two availability zones; VPC CNI v1.23.0 reported `SecurityGroupsForPods` through both `CNINode` objects with `ENABLE_POD_ENI=true`; two trunk ENIs were attached; and private encrypted Single-AZ RDS was available with one-day retention and an RDS-managed secret. One NAT/EIP, immutable ECR and the reviewed IAM/security resources existed. No DR, WAF, additional NAT, Multi-AZ database or cross-region workload was created.
+
+GitHub Actions run `33199347308` assumed the exact OIDC publisher role, passed unit/container tests and the HIGH/CRITICAL Trivy gate, pushed an immutable ECR digest and created digest-only promotion PR #2. The PR was squash-merged to `main`; the promoted digest matched ECR. Argo reconciled the promoted digest. External Secrets, AWS Load Balancer Controller, metrics-server, observability and CareFlow were Synced/Healthy. Kyverno and its policy application were Healthy and enforcing but remained OutOfSync because of chart hook/CRD and live-mutation differences, so the overall controller result is **PARTIAL** rather than overstated.
+
+Two digest-pinned CareFlow replicas became Ready on separate nodes. External Secrets reconciled the RDS-managed JSON into the expected application secret format; workload identity and pod-security-group branch ENIs worked; migrations completed; and the API connected to RDS. The ALB had an HTTP listener, one target group with two healthy targets, `/readyz` returned 200, and the synthetic appointment API returned 200. A pre-restart dataset hash and the hash after a CareFlow pod restart were identical. Trusted public TLS remains **PENDING** because no owner-controlled domain or validated certificate was introduced.
+
+Prometheus was Ready and successfully scraped CareFlow. Request rate, latency and database-dependency health queries returned data, and the CareFlow rules loaded healthy/inactive. One of two pod targets timed out on the cross-node pod-security-group path, so observability is **PARTIAL** even though the required scrape and metric evidence exists.
+
+The controlled broken-readiness revision was merged through GitOps while continuous ALB traffic ran. Kubernetes retained two Ready old replicas while one new replica remained unready. The drill served **145 requests with 0 failures over 222 seconds**. Rollback used **Git revert → PR #4 squash merge → `main` → Argo reconciliation**, not `kubectl rollout undo`: the prior digest returned, Argo was Synced/Healthy, two CareFlow replicas were Ready, both ALB targets were healthy, HTTP returned 200 and the RDS dataset hash was unchanged. Recovery completed in **153 seconds**. The RDS managed-secret rotation command was rejected before rotation because the deployment role lacks the rotation authorization; no IAM expansion was made, traffic remained 30/30 successful during the bounded attempt, and application rotation recovery remains **PENDING**.
+
+### Deterministic in-place corrections
+
+- Replaced the changed owner ISP address with the current exact `/32` EKS API allowlist; no network boundary was broadened.
+- Raised the Argo application-controller memory request/limit after a deterministic OOM and added child-Application health propagation so sync waves honor child health.
+- Preserved the Git-promoted digest when injecting the runtime ECR repository URL.
+- Corrected one extra closing brace in the generated External Secret database JSON template.
+
+No IAM permission, IAM trust, workload architecture, worker size/count or security control was weakened during these corrections.
+
+### Final teardown and leftovers
+
+Controller-owned Ingress/ALB resources were removed first and the ALB/target-group inventory returned empty. The guarded Terraform destroy began with all 89 workload objects. It removed 62 objects, then stopped safely because two detached VPC-CNI branch ENIs still referenced the pod security group. A temporary customer-managed policy granted `ec2:DeleteNetworkInterface` only for those two ENI ARNs; after their deletion, the reviewed retry destroyed the remaining **27** Terraform objects. The policy was detached and deleted immediately afterward. The owner also deleted the service-created RDS PostgreSQL log group, which was outside Terraform state.
+
+Remote workload state now contains **0 objects**. Native S3 locking acquired/released normally and no `.tflock` object remains. Independent API checks returned empty for project VPCs, subnets, route tables, IGWs, NAT gateways, EIPs, EKS clusters/node groups, EC2 workers, Auto Scaling groups, launch templates, RDS instances/subnet groups/secrets/backups/snapshots, EBS volumes/snapshots, ALBs/listeners/target groups, ENIs, security groups, ECR, workload IAM, CloudWatch logs and alarms. Six historical workload KMS keys remain disabled in AWS-enforced `PendingDeletion`; the EKS node-group service-linked role and intentional bootstrap layer may persist. No billable CareFlow workload remains.
+
+The elapsed window from apply start through final cleanup was approximately **6 hours 25 minutes**, including a long owner-assisted teardown pause after the main billable resources were already removed. A conservative estimate is **under $1.50 before Free-plan credits**, dominated by the EKS control plane plus roughly one hour of workers, NAT, RDS and ALB. Billing data is delayed, so this is an estimate rather than an invoice claim.
+
+### Final executed evidence matrix
+
+| Area | Status | Executed result |
+|---|---|---|
+| Infrastructure | PASS | Exact 89-create apply; EKS, two private workers, modern VPC CNI/trunk ENIs, private encrypted RDS, ECR and scoped security resources verified |
+| GitHub to ECR | PASS | OIDC STS, tests, Trivy gate, immutable push, digest capture and digest-only squash merge verified |
+| Argo/controllers | PARTIAL | Core applications Synced/Healthy; Kyverno healthy/enforcing but OutOfSync on chart/live-object differences |
+| CareFlow to RDS | PASS | External Secret, identity, pod SG, migrations, two replicas, synthetic create/read and restart persistence verified |
+| ALB HTTP path | PASS | Internet → ALB → Service → CareFlow → RDS returned healthy synthetic responses; two targets healthy |
+| Trusted TLS | PENDING | No controlled domain or validated ACM certificate |
+| Observability | PARTIAL | Prometheus and required metrics/rules worked; one of two CareFlow targets timed out cross-node |
+| Failed rollout | PASS | 145 requests, 0 failures, 222 seconds; two old replicas remained Ready |
+| GitOps rollback | PASS | Git revert/merge/Argo restored prior digest and full health in 153 seconds |
+| Secret rotation recovery | PENDING | Rotation authorization was absent; AWS rejected the request before changing the secret |
+| Teardown | PASS | Remote state 0; independent workload inventory empty; temporary cleanup policy removed |
+
+## Final scores
+
+| Role | Code/design | Executed evidence |
+|---|---:|---:|
+| Cloud Architect | 88/100 | 90/100 |
+| Senior Cloud Engineer | 90/100 | 94/100 |
+| Senior DevOps | 93/100 | 94/100 |
+
+`Cloud Runtime Validation Score: 88/100`
+
+Portfolio readiness: **READY FOR WIFE REVIEW**.
+
+Remaining non-core gaps are the second Prometheus pod target, clean Kyverno GitOps convergence, RDS secret-rotation recovery authorization/evidence and optional trusted TLS. No credentials were committed, no secret values were captured, no employer/customer infrastructure or data was used, and only synthetic—not real patient—data was used.
 
 ## Fourth controlled validation outcome
 

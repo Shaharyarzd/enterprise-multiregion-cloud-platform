@@ -6,6 +6,18 @@ Successful local run: `20260826T143135Z-90098`, completed at `2026-08-26T14:34:2
 
 Runtime toolchain: Python 3.9.6, curl 8.7.1, ripgrep 15.2.0, Docker client 29.7.2/server 29.5.2 through Colima 0.10.3, OpenSSL 3.6.3, Trivy 0.74.0, kind 0.32.0, kubectl 1.36.4/Kustomize 5.8.1 and kubeconform 0.8.0. actionlint 1.7.12 was also used for workflow validation.
 
+## Final AWS validation update
+
+The final authorized AWS validation completed the core cloud path and mandatory teardown. Exact Terraform execution was **89 added, 0 changed, 0 destroyed** from a reviewed 89-create/9-read plan. GitHub OIDC published an immutable digest to ECR and the digest-only promotion PR was squash-merged. Argo deployed two Ready CareFlow replicas; External Secrets, workload identity, pod security groups, migrations, private RDS connectivity, ALB HTTP routing and synthetic data persistence all passed.
+
+The cloud failed-rollout drill served **145 requests with 0 failures over 222 seconds** while two old replicas stayed Ready. A Git revert merged to `main` and Argo restored the previous digest and full traffic/data health in **153 seconds**. Prometheus and the required application metrics/rules worked, but only one of two CareFlow scrape targets was reachable; observability is therefore **PARTIAL**. RDS managed-secret rotation recovery is **PENDING** because AWS rejected the rotation request before changing credentials. Trusted TLS remains **PENDING**.
+
+Guarded teardown and the independent AWS inventory passed. Remote workload state contains zero objects, no native lock remains and no billable CareFlow workload remains. Six historical workload KMS keys are disabled in `PendingDeletion`; the intentional bootstrap layer and EKS node-group service-linked role may remain. Full details and historical attempt preservation are in [`aws-runtime-evidence.md`](aws-runtime-evidence.md).
+
+`Cloud Runtime Validation Score: 88/100`
+
+Portfolio readiness: **READY FOR WIFE REVIEW**.
+
 ## Evidence matrix
 
 | Evidence area | Status | Executed proof or reason |
